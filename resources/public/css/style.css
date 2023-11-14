@@ -1,0 +1,47 @@
+.outer {
+  display: grid;
+  grid-template: 1fr / 1fr;
+  place-items: left;
+}
+.outer > * {
+  grid-column: 1 / 1;
+  grid-row: 1 / 1;
+}
+.outer .below {
+  z-index: 1;
+  background-color: white;
+}
+.outer .top {
+  z-index: 2;
+  padding-top: 5px;
+  padding-left: 5px;
+  background-color: white;
+}
+
+span {
+  white-space: pre;
+}
+
+h1, h2, h3 {
+  color: #000;
+}
+h1 {
+  font-size: 2.5em
+}
+
+h2 {
+  font-size: 2em
+}
+
+h3 {
+  font-size: 1.5em
+}
+
+a {
+  text-decoration: none;
+  color: #09f;
+}
+
+a:hover {
+  text-decoration: underline;
+}
