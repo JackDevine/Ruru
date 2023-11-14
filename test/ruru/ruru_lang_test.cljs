@@ -218,6 +218,12 @@
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@[2,2]" ruru/default-environment) first) 5))
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@6" ruru/default-environment) first) 6))
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@[4,2]" ruru/default-environment) first)
-           '(error "Indeces [4 2] out of bounds for array of size [3 2]")))))
+           '(error "Indeces [4 2] out of bounds for array of size [3 2]")))
+    (is (= (-> (ruru/interpret "\"a string\"First" ruru/default-environment) first)
+           "a"))
+    (is (= (-> (ruru/interpret "\"a string\"Upper_case" ruru/default-environment) first)
+           "A STRING"))
+    (is (= (-> (ruru/interpret "\"A StrIng\"Lower_case" ruru/default-environment) first)
+           "a string"))))
 
 (run-tests ruru.ruru-lang-test)

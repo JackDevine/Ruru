@@ -139,7 +139,7 @@
    :set_into! {:role :function :arity 2 :value :set-into!}
    :=> {:role :function :arity 2 :value :set-into!}
    :list {:role :function :value list-fn}
-   :first {:role :function :value #(first (% 'value))}
+   :first {:role :function :value #(if (ruru-array? %) (first (% 'value)) (first %))}
    :last {:role :function :value #(last (% 'value))}
    (keyword "|") {:role :function
                   :arity 2
