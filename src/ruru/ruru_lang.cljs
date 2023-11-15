@@ -7,6 +7,8 @@
 
 (defn ignore-next-form-impl [tokens] (remove #(and (seq? %1) (= :#_ (first %1))) tokens))
 
+(defn html? [x] (contains? x 'html))
+
 (defn list-fn [& args] (let [val (into [] (apply list args))]
                          {'array_dims [(count val) 1] 'value val}))
 
@@ -97,7 +99,8 @@
     {'array_dims [1 (count d)] 'value d}))
 
 (def default-environment
-  {:set_diff {:role :function :value set-diff}
+  {:html {:role :function :value (fn [x] {'html x})}
+   :set_diff {:role :function :value set-diff}
    :extend_dim {:role :function :value extend-dim}
    :' {:role :function
        :value #(-> %1
@@ -433,6 +436,12 @@
     (empty? seq1) nil
     (sequential? (first seq1)) (cons (deep-map f (first seq1)) (deep-map f (rest seq1)))
     :else (cons (f (first seq1)) (deep-map f (rest seq1)))))
+
+(defn deep-mapv [f seq1]
+  (cond
+    (empty? seq1) nil
+    (sequential? (first seq1)) (into [] (cons (deep-map f (first seq1)) (deep-map f (rest seq1))))
+    :else (cons (f (first seq1)) (into [] (deep-map f (rest seq1))))))
 
 (declare get-ast)
 

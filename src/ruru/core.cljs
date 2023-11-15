@@ -80,23 +80,33 @@
       (if header-names (second header-names) "Value")]]
     (for [kv (seq m)] [:tr [:td (show-result (first kv))] [:td (show-result (second kv))]])]])
 
+(defn extract-list [v]
+  (mapv #(if (ruru/ruru-array? %) (extract-list (% 'value)) %) v))
+
+(defn show-html [x]
+  (cond (ruru/ruru-array? (x 'html)) (first (extract-list [(x 'html)]))
+        :else (x 'html)))
+
 (defn show-result [r]
   (cond
         ;; (vector? r) [:div {:style {:height "2em" :width "640px" "overflow-x" "scroll" "overflow-y" "hidden" "white-space" "nowrap"}} (str r)]
-    (contains? r 'array_dims) (show-array r)
+    (ruru/ruru-array? r) (show-array r)
+    (ruru/html? r) (show-html r)
     (map? r) (show-map r)
     (string? r) [:span {:style {:color "red"}} (str "\"" r "\"")]
     (keyword? r) [:span (apply str (rest (str r)))]
-    :else [:div (str r)]))
+    :else [:span r]))
 
 (defn create-cell [val selection cell-id]
   [:div
    [:div {:class "outer"}
     [:div {:class "top" :style {:opacity 0}} [atom-input val selection cell-id]]
     (into [] (concat formatted-input (ruru/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
-   [:div {:style {:font-size "1em" :font-family "monospace" :padding-top "2px"}}
-    (show-result (get-in @cells [cell-id :result]))]
-   [:br]])
+   [:div {:style {:font-size "1.3em" :font-family "monospace"
+                  :padding-top "2px"
+                  :outline "2px solid grey"
+                  :background-color "lightsalmon"}}
+    (show-result (get-in @cells [cell-id :result])) [:br]]])
 
 (defn add-new-cell! []
   (do (swap! cells #(into [] (concat % [{:val "" :selection 0 :result nil :expression-list '()}])))))
