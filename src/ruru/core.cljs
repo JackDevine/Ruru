@@ -83,19 +83,25 @@
 (defn extract-list [v]
   (mapv #(if (ruru/ruru-array? %) (extract-list (% 'value)) %) v))
 
+(defn extract-string [v]
+  (mapv #(cond
+           (and (seq? %) (= :#_string (first %))) (second %)
+           (sequential? %) (extract-string %)
+           :else %) v))
+
 (defn show-html [x]
-  (cond (ruru/ruru-array? (x 'html)) (first (extract-list [(x 'html)]))
+  (cond (ruru/ruru-array? (x 'html))
+        (extract-string (first (extract-list [(x 'html)])))
         :else (x 'html)))
 
 (defn show-result [r]
   (cond
-        ;; (vector? r) [:div {:style {:height "2em" :width "640px" "overflow-x" "scroll" "overflow-y" "hidden" "white-space" "nowrap"}} (str r)]
+    (ruru/ruru-string? r) [:span {:style {:color "red"}} (str "\"" (second r) "\"")]
     (ruru/ruru-array? r) (show-array r)
     (ruru/html? r) (show-html r)
     (map? r) (show-map r)
-    (string? r) [:span {:style {:color "red"}} (str "\"" r "\"")]
     (keyword? r) [:span (apply str (rest (str r)))]
-    :else [:span r]))
+    :else [:span (str r)]))
 
 (defn create-cell [val selection cell-id]
   [:div
@@ -119,6 +125,7 @@
 
 (defn notebook-page []
   (fn [] [:sp.main
+          [:title "ruru notebook"]
           ; TODO use a grid to format better
           [:div [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
            [:div {:style {:font-size "2em" :margin-top "-75px" :margin-left "110px"}}

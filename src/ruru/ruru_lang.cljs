@@ -8,6 +8,9 @@
 (defn ignore-next-form-impl [tokens] (remove #(and (seq? %1) (= :#_ (first %1))) tokens))
 
 (defn html? [x] (contains? x 'html))
+(defn ruru-symbol? [exp] (keyword? exp))
+(defn ruru-string? [exp] (and (seq? exp) (= (first exp) :#_string)))
+(defn ruru-number? [exp] (number? exp))
 
 (defn list-fn [& args] (let [val (into [] (apply list args))]
                          {'array_dims [(count val) 1] 'value val}))
@@ -35,9 +38,6 @@
         dim-2-extended (into [] (apply concat (repeat dim-2-extend arr-value)))]
     {'array_dims dim 'value (if (= 1 dim-2-extend) dim-1-extended dim-2-extended)}))
 
-(extend-dim {'array_dims [1 5] 'value (into [] (range 5))} [3 5])
-(extend-dim {'array_dims [5 1] 'value (into [] (range 5))} [5 3])
-
 (defn mul-impl [x y xdims ydims]
   (let [broadcast-dim+iter (for [dim (range (max (count ydims) (count xdims)))]
                              (let [x-len (get xdims dim)
@@ -55,8 +55,6 @@
         _ (println xdims)]
     (cond (not= 0 (reduce + (map empty? [xdims ydims]))) '(error "Not implemented")
           :else (mul-impl x y xdims ydims))))
-
-(mul {'array_dims [3 3] 'value (into [] (range 9))} {'array_dims [3 3] 'value (into [] (range 9))})
 
 (defn ruru-array? [x] (contains? x 'array_dims))
 
@@ -77,6 +75,8 @@
   (cond
     (and (ruru-array? coll) (number? key)) (ruru-index-linear coll key)
     (ruru-array? coll) (ruru-index-linear coll (ruru-linear-index (coll 'array_dims) (key 'value)))
+    (ruru-string? coll) (list :#_string (get (second coll) (dec key)))
+    (seq? coll) (nth coll (dec key))
     :else (get coll key)))
 
 (defn ruru-concat [x y]
@@ -102,7 +102,7 @@
   {:html {:role :function :value (fn [x] {'html x})}
    :set_diff {:role :function :value set-diff}
    :extend_dim {:role :function :value extend-dim}
-   :' {:role :function
+   :t {:role :function
        :value #(-> %1
                    (assoc 'array_dims (into [] (reverse (get %1 'array_dims))))
                    (assoc 'transpose (not (get %1 'transpose))))}
@@ -110,8 +110,8 @@
          :value mul}
    :reshape {:role :function :value reshape-impl}
    :ones {:role :function :value ones}
-   :upper_case {:role :function :arity 1 :value str/upper-case}
-   :lower_case {:role :function :arity 1 :value str/lower-case}
+   :upper_case {:role :function :arity 1 :value #(list :#_string (str/upper-case (second %)))}
+   :lower_case {:role :function :arity 1 :value #(list :#_string (str/lower-case (second %)))}
    :& {:role :function :arity 1 :value str}
    :square {:role :function :arity 1 :value #(* %1 %1)}
    :sqrt {:role :function :arity 1 :value #(Math/sqrt %1)}
@@ -142,17 +142,20 @@
    :set_into! {:role :function :arity 2 :value :set-into!}
    :=> {:role :function :arity 2 :value :set-into!}
    :list {:role :function :value list-fn}
-   :first {:role :function :value #(if (ruru-array? %) (first (% 'value)) (first %))}
-   :last {:role :function :value #(last (% 'value))}
+   :first {:role :function :value #(cond
+                                     (ruru-array? %) (first (% 'value))
+                                     (ruru-string? %) (list :#_string (first (second %))) 
+                                     :else (first %))}
+   :last {:role :function :value #(cond
+                                    (ruru-array? %) (first (% 'value))
+                                    (ruru-string? %) (list :#_string (first (second %)))
+                                    :else (last %))}
    (keyword "|") {:role :function
                   :arity 2
                   :value ruru-concat}
-   :string {:role :function :arity 2 :value #(str %1 %2)}
+   :string {:role :function :arity 2:value #(list :#_string (str (second %1) (second %2)))}
    :#!reader-macro {:ignore-next-form ignore-next-form-impl}})
 
-(defn ruru-symbol? [exp] (keyword? exp))
-(defn ruru-string? [exp] (string? exp))
-(defn ruru-number? [exp] (number? exp))
 (defn assignment? [exp] (= exp :set!))
 (defn assignment-into? [exp] (contains? #{:set_into! :=>} exp))
 
@@ -199,19 +202,53 @@
                 lambda-return (first (ruru-eval (first body) lambda-env))]
             [lambda-return env])))
 
+(defn ruru-quote? [exp] (and (map? exp) (= :quoted (:role exp))))
+
+(defn exp-value [exp]
+  (cond (ruru-quote? exp) exp
+        (and (map? exp) (contains? exp :name)) (exp :name)
+        (map? exp) (exp :value)
+        (ruru-string? exp) exp
+        (seq? exp) (map exp-value exp)
+        :else exp))
+
+(declare ruru-eval-quote)
+
+(defn extract-expr [exp]
+  (let [ret (map #(ruru-eval-quote %) (get exp :value exp))]
+    (if (= 1 (count ret)) (first ret)
+        ret)))
+
+(defn ruru-eval-quote [exp]
+  (cond (ruru-string? (get exp :value)) (get exp :value)
+        (seq? exp) {'array_dims [(dec (count exp)) 1]
+                    'value (mapv extract-expr (rest exp))}
+        (and (map? exp) (= :variable (:role exp))) (ruru-eval-quote (exp :name))
+        (and (map? exp) (= :function (:role exp))) (ruru-eval-quote (exp :name))
+        (and (map? exp) (= :expr (:role exp))) (extract-expr exp)
+        (map? exp) (ruru-eval-quote (exp :value))
+        :else exp))
+
 (defn ruru-apply [f args env]
   (cond
     (lambda? f env) (lambda-apply f (map #(first (ruru-eval %1 env)) args) env)
     (assignment? f) (ruru-set (first args) (rest args) env)
     (assignment-into? f) (ruru-set-into (take (- (count args) 1) args) (last args) env)
-    :else [(apply ((get env f {:value f}) :value) (map #(first (ruru-eval %1 env)) args)) env]))
+    :else [(apply (get-in env [f :value] (list 'error (str "Undefined function " f)))
+                  (map #(first (ruru-eval %1 env)) args)) env]))
 
 (defn ruru-eval [exp env]
-  (cond
-    (self-evaluating? exp) [exp env]
-    (ruru-symbol? exp) [((get env exp {:value exp}) :value) env]
-    (empty? exp) [exp env]
-    :else (ruru-apply (first exp) (rest exp) env)))
+  (let [exp (if (seq? exp)
+              (map exp-value exp)
+              (exp-value exp))]
+    (cond
+      (and (seq? exp) (= 1 (count exp))) (ruru-eval (first exp) env)
+      (ruru-string? exp) [exp env];[(second exp) env]
+      (ruru-symbol? exp) [(get-in env [exp :value] (list 'error (str "Undefined symbol " exp))) env]
+      (self-evaluating? exp) [exp env]
+      (empty? exp) [exp env]
+      (ruru-quote? exp) [(ruru-eval-quote exp) env]
+      :else (ruru-apply (first exp) (rest exp) env))))
 
 (def delimit-tokens #{"‿" "|" "~" " " "\n" "\n\t" "\n    " "\n  " "," "[" "]" ":" ":=" "=" "=>" "+" "*" "-" "/" "(" ")" "{" "}" ";" ";=" "\"" "@" "#" "%" "!" "'"})
 
@@ -331,6 +368,7 @@
     (= t "]") {:role :close-square-brace :value t}
     (= t "{") {:role :open-curly-brace :value t}
     (= t "}") {:role :close-curly-brace :value t}
+    (= t "'") {:role :quote :value t}
     (strand? t) {:role :strand :value t :name (keyword t)}
 
     (token-string? t) {:role :variable :value t}
@@ -437,12 +475,6 @@
     (sequential? (first seq1)) (cons (deep-map f (first seq1)) (deep-map f (rest seq1)))
     :else (cons (f (first seq1)) (deep-map f (rest seq1)))))
 
-(defn deep-mapv [f seq1]
-  (cond
-    (empty? seq1) nil
-    (sequential? (first seq1)) (into [] (cons (deep-map f (first seq1)) (deep-map f (rest seq1))))
-    :else (cons (f (first seq1)) (into [] (deep-map f (rest seq1))))))
-
 (declare get-ast)
 
 (defn unnest-exprs [tokens env]
@@ -457,6 +489,21 @@
     (cond
       (every? #(ruru-function? %1 env) tokens) `(:lambda (:x) ((~st (~ft :x))))
       :else (list st ft))))
+
+(defn token->symbol [token]
+  (cond
+    (seq? token) (deep-map token->symbol token)
+    (not (map? token)) token
+    (token-string? (:value token)) (second (:value token))
+    (or (= :variable (:role token)) (= :function (:role token))) (:name token)
+    (= :list (:role token)) (:value token)
+    :else (:value token)))
+
+(defn normalize-ast [ast]
+  (let [symbols (deep-map token->symbol ast)]
+    (if (and (= 1 (count symbols)) (seq? (first symbols)))
+      (first symbols)
+      symbols)))
 
 (defn get-ast [tokens env]
   (if
@@ -474,23 +521,15 @@
                    ast-head (nthrest tokens 3)]
                (get-ast (conj ast-head ast-leaf) env))))))
 
-(defn token->symbol [token]
-  (cond
-    (seq? token) (map token->symbol token)
-    (not (map? token)) token
-    (token-string? (:value token)) (second (:value token))
-    (or (= :variable (:role token)) (= :function (:role token))) (:name token)
-    (= :list (:role token)) (:value token)
-    :else (:value token)))
-
-(defn normalize-ast [ast]
-  (let [symbols (deep-map token->symbol ast)]
-    (if (and (= 1 (count symbols)) (seq? (first symbols)))
-      (first symbols)
-      symbols)))
-
 (defn remove-whitespace [tokens]
-  (filter #(not= :whitespace (:role %1)) tokens))
+  (filterv #(not= :whitespace (:role %1)) tokens))
+
+(defn bind-quotes [ts]
+  (cond
+    (<= (count ts) 1) ts
+    (= :quote (get (first ts) :role)) (concat [{:role :quoted :value (second ts)}]
+                                              (bind-quotes (nthrest ts 2)))
+    :else (concat [(first ts)] (bind-quotes (rest ts)))))
 
 (defn expression-list-impl [s l]
   (if (= s "") [s l]
@@ -576,8 +615,8 @@
       remove-whitespace
       bind-strands
       nest-parens
+      bind-quotes
       (get-ast env)
-      normalize-ast
       (ruru-eval env)))
 
 (defn interpret-recur-impl [l result env]
