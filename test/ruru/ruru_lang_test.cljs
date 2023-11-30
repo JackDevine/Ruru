@@ -252,6 +252,10 @@
     (is (= (-> (ruru/interpret "['span,\"hallo\"]" ruru/default-environment) first)
            {'array_dims [2 1] 'value [:span '(:#_string "hallo")]}))
     (is (= (-> (ruru/interpret "('q)" ruru/default-environment) first)
-           :q))))
+           :q))
+    (is (= (-> (ruru/interpret "1:6Filter is_even" ruru/default-environment) first)
+           {'array_dims [3 1] 'value [2 4 6]}))
+    (is (= (-> (ruru/interpret "1:20Filter is_even Map square Reduce~+" ruru/default-environment) first)
+           1540))))
 
 (run-tests ruru.ruru-lang-test)

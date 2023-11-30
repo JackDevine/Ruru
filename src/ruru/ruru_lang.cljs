@@ -249,8 +249,8 @@
               (map exp-value exp)
               (exp-value exp))]
     (cond
+      (and (seq? exp) (= 1 (count exp)) (ruru-function? (first exp) env)) [(first exp) env]
       (and (seq? exp) (= 1 (count exp))) (ruru-eval (first exp) env)
-      (ruru-function? exp env) [exp env] 
       (ruru-string? exp) [exp env]
       (ruru-symbol? exp) [(get-in env [exp :value] (list 'error (str "Undefined symbol " exp))) env]
       (self-evaluating? exp) [exp env]
