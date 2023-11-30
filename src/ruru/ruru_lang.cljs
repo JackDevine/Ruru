@@ -11,9 +11,16 @@
 (defn ruru-symbol? [exp] (keyword? exp))
 (defn ruru-string? [exp] (and (seq? exp) (= (first exp) :#_string)))
 (defn ruru-number? [exp] (number? exp))
+(defn ruru-function? [t env]
+  (cond
+    (seq? t) (= :lambda (-> t first :value))
+    (contains? env t) (= :function (-> t env :role))
+    :else (= :function (:role t))))
 
-(defn list-fn [& args] (let [val (into [] (apply list args))]
-                         {'array_dims [(count val) 1] 'value val}))
+(defn list-fn [& args] (if (empty? args)
+                         {'array_dims [0 0] 'value []}
+                         (let [val (into [] (apply list args))]
+                           {'array_dims [(count val) 1] 'value val})))
 
 (defn ones [dims] {'array_dims dims 'value (into [] (repeat (reduce * dims) 1.0))})
 
@@ -243,7 +250,8 @@
               (exp-value exp))]
     (cond
       (and (seq? exp) (= 1 (count exp))) (ruru-eval (first exp) env)
-      (ruru-string? exp) [exp env];[(second exp) env]
+      (ruru-function? exp env) [exp env] 
+      (ruru-string? exp) [exp env]
       (ruru-symbol? exp) [(get-in env [exp :value] (list 'error (str "Undefined symbol " exp))) env]
       (self-evaluating? exp) [exp env]
       (empty? exp) [exp env]
@@ -402,12 +410,6 @@
   (let [reader-macros (vals (env :#!reader-macro))]
     (run-reader-macros-impl ast reader-macros)))
 
-(defn ruru-function? [t env]
-  (cond
-    (seq? t) (= :lambda (-> t first :value))
-    (contains? env t) (= :function (-> t env :role))
-    :else (= :function (:role t))))
-
 (defn get-ast-3-tokens [tokens env]
   (let [lt (last tokens)
         st (second tokens)
@@ -526,7 +528,10 @@
 
 (defn bind-quotes [ts]
   (cond
-    (<= (count ts) 1) ts
+    (empty? ts) ts
+    (= :expr (get (first ts) :role)) (concat [(assoc (first ts) :value (bind-quotes ((first ts) :value)))]
+                                             (bind-quotes (rest ts)))
+    (seq? (first ts)) (concat [(bind-quotes (first ts))] (bind-quotes (rest ts)))
     (= :quote (get (first ts) :role)) (concat [{:role :quoted :value (second ts)}]
                                               (bind-quotes (nthrest ts 2)))
     :else (concat [(first ts)] (bind-quotes (rest ts)))))

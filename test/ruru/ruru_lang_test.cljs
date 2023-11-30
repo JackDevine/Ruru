@@ -91,7 +91,9 @@
     (is (= (second (ruru/get-first-exp "2{x+y\nx*y}4" '() [0 0 0]))
            '("2" "{" "x" "+" "y" "\n" "x" "*" "y" "}" "4")))
     (is (= (second (ruru/get-first-exp "2+%{a multi\nline\ncomment}%4" '() [0 0 0]))
-           '("2" "+" (:#_ "%{a multi\nline\ncomment}%") "4")))))
+           '("2" "+" (:#_ "%{a multi\nline\ncomment}%") "4")))
+    (is (= (second (ruru/get-first-exp "['span,\"hallo\"]" '() [0 0 0]))
+           '("[" "'" "span" "," (:#_string "hallo") "]")))))
 
 (deftest first-delimeter-test
   (testing "First delimeter test"
@@ -246,6 +248,10 @@
     (is (= (-> (ruru/interpret "'((2*3)+2)Last" ruru/default-environment) first)
            2))
     (is (= (-> (ruru/interpret "'((2*3)+2)@1" ruru/default-environment) first)
-           '(2 :* 3)))))
+           '(2 :* 3)))
+    (is (= (-> (ruru/interpret "['span,\"hallo\"]" ruru/default-environment) first)
+           {'array_dims [2 1] 'value [:span '(:#_string "hallo")]}))
+    (is (= (-> (ruru/interpret "('q)" ruru/default-environment) first)
+           :q))))
 
 (run-tests ruru.ruru-lang-test)

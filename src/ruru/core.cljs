@@ -135,8 +135,8 @@
           [:div "A lightweight programming environment for solving problems of any size."]
           [:br]
           [:div {:style {"max-width" "700px"}}
-           (into [] (concat [:div] (mapv #(create-cell (reagent/cursor cells [% :val]) (reagent/cursor cells [% :selection]) %) (range (count @cells))))) 
-           [:button {:on-click #(swap! cells (fn [c] (into [] (drop-last c))))} "Delete"]
+           (into [] (concat [:div] (mapv #(create-cell (reagent/cursor cells [% :val]) (reagent/cursor cells [% :selection]) %) (range (count @cells)))))
+           [:button {:style {:margin-top "10px"} :on-click #(swap! cells (fn [c] (into [] (drop-last c))))} "Delete"]
            [:button {:on-click add-new-cell!} "Create new cell"]
            [:button {:on-click #(reset! notebook-environment ruru/default-environment)} "Reset notebook"]
            [:div {:style {:position "absolute" :top 0 :right 0}} (show-environment @notebook-environment)]]]))
