@@ -81,7 +81,7 @@
     (is (= :whitespace (:role (ruru/token-value "\n  "))))))
 
 (deftest get-first-exp-test
-  (testing "Get fisrt expression"
+  (testing "Get first expression"
     (is (= (second (ruru/get-first-exp "2+2" '() [0 0 0])) '("2" "+" "2")))
     (is (= (second (ruru/get-first-exp "2+2\n\t3+4" '() [0 0 0])) '("2" "+" "2" "\n\t" "3" "+" "4")))
     (is (= (second (ruru/get-first-exp "2+(2\n3+4)+2\n4-5" '() [0 0 0]))
@@ -93,7 +93,7 @@
     (is (= (second (ruru/get-first-exp "2+%{a multi\nline\ncomment}%4" '() [0 0 0]))
            '("2" "+" (:#_ "%{a multi\nline\ncomment}%") "4")))
     (is (= (second (ruru/get-first-exp "['span,\"hallo\"]" '() [0 0 0]))
-           '("[" "'" "span" "," (:#_string "hallo") "]")))))
+           '("[" "'" "span" "," (:#_string "\"hallo\"") "]")))))
 
 (deftest first-delimeter-test
   (testing "First delimeter test"
@@ -215,22 +215,22 @@
     (is (= (-> (ruru/interpret "2 {x*2} => w" env) first) 4))
     (is (= (-> (ruru/interpret "2+(2\nSquare)" env) first) 6))
     (is (= (-> (ruru/interpret "[1, (2-3),\n (3+2),  4]" env) first) {'array_dims [4 1] 'value [1 -1 5 4]}))
-    (is (= (-> (ruru/interpret "\"hallo\"string\" world\"" env) first) '(:#_string "hallo world")))
+    (is (= (-> (ruru/interpret "\"hallo\"string\" world\"" env) first) '(:#_string "\"hallo world\"")))
     (is (= (-> (ruru/interpret "1:6Reshape[2, 3]" ruru/default-environment) first) {'array_dims [2 3] 'value [1 2 3 4 5 6]}))
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@[2,2]" ruru/default-environment) first) 5))
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@6" ruru/default-environment) first) 6))
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@[4,2]" ruru/default-environment) first)
            '(error "Indeces [4 2] out of bounds for array of size [3 2]")))
     (is (= (-> (ruru/interpret "\"a string\"First" ruru/default-environment) first)
-           '(:#_string "a")))
+           '(:#_string "\"a\"")))
     (is (= (-> (ruru/interpret "\"a string\"Upper_case" ruru/default-environment) first)
-           '(:#_string "A STRING")))
+           '(:#_string "\"A STRING\"")))
     (is (= (-> (ruru/interpret "\"A StrIng\"Lower_case" ruru/default-environment) first)
-           '(:#_string "a string")))
+           '(:#_string "\"a string\"")))
     (is (= (-> (ruru/interpret "\"A StrIng\"First" ruru/default-environment) first)
-           '(:#_string "A")))
+           '(:#_string "\"A\"")))
     (is (= (-> (ruru/interpret "\"A StrIng\"@3" ruru/default-environment) first)
-           '(:#_string "S")))
+           '(:#_string "\"S\"")))
     (is (= (-> (ruru/interpret "'[1,2,3]" ruru/default-environment) first)
            {'array_dims [3 1] 'value [1 2 3]}))
     (is (= (-> (ruru/interpret "'pi" ruru/default-environment) first)
@@ -250,7 +250,7 @@
     (is (= (-> (ruru/interpret "'((2*3)+2)@1" ruru/default-environment) first)
            '(2 :* 3)))
     (is (= (-> (ruru/interpret "['span,\"hallo\"]" ruru/default-environment) first)
-           {'array_dims [2 1] 'value [:span '(:#_string "hallo")]}))
+           {'array_dims [2 1] 'value [:span '(:#_string "\"hallo\"")]}))
     (is (= (-> (ruru/interpret "('q)" ruru/default-environment) first)
            :q))
     (is (= (-> (ruru/interpret "1:6Filter is_even" ruru/default-environment) first)

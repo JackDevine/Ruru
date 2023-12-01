@@ -82,7 +82,7 @@
   (cond
     (and (ruru-array? coll) (number? key)) (ruru-index-linear coll key)
     (ruru-array? coll) (ruru-index-linear coll (ruru-linear-index (coll 'array_dims) (key 'value)))
-    (ruru-string? coll) (list :#_string (get (second coll) (dec key)))
+    (ruru-string? coll) (list :#_string (apply str "\"" (get (second coll) key) "\""))
     (seq? coll) (nth coll (dec key))
     :else (get coll key)))
 
@@ -119,7 +119,6 @@
    :ones {:role :function :value ones}
    :upper_case {:role :function :arity 1 :value #(list :#_string (str/upper-case (second %)))}
    :lower_case {:role :function :arity 1 :value #(list :#_string (str/lower-case (second %)))}
-   :& {:role :function :arity 1 :value str}
    :square {:role :function :arity 1 :value #(* %1 %1)}
    :sqrt {:role :function :arity 1 :value #(Math/sqrt %1)}
    :sin {:role :function :arity 1 :value Math/sin}
@@ -151,16 +150,18 @@
    :list {:role :function :value list-fn}
    :first {:role :function :value #(cond
                                      (ruru-array? %) (first (% 'value))
-                                     (ruru-string? %) (list :#_string (first (second %))) 
+                                     (ruru-string? %) (list :#_string
+                                                            (apply str "\"" (first (subs (second %) 1)) "\"")) 
                                      :else (first %))}
    :last {:role :function :value #(cond
-                                    (ruru-array? %) (first (% 'value))
+                                    (ruru-array? %) (last (% 'value))
                                     (ruru-string? %) (list :#_string (first (second %)))
                                     :else (last %))}
    (keyword "|") {:role :function
                   :arity 2
                   :value ruru-concat}
-   :string {:role :function :arity 2:value #(list :#_string (str (second %1) (second %2)))}
+   :string {:role :function :arity 2:value #(list :#_string (str (subs (second %1) 0 (- (count (second %1)) 1))
+                                                                 (subs (second %2) 1)))}
    :#!reader-macro {:ignore-next-form ignore-next-form-impl}})
 
 (defn assignment? [exp] (= exp :set!))
@@ -305,7 +306,9 @@
 
 (defn get-first-string [s]
   (let [[first-str rest-str] (str/split (subs s 1) #"\"" 2)]
-    [(list :#_string first-str) (if (nil? rest-str) "" rest-str)]))
+    (if (nil? rest-str)
+      [(list :#_string (str "\"" first-str)) ""]
+      [(list :#_string (str "\"" first-str "\"")) rest-str])))
 
 (defn begins-with-number? [s]
   (number? (cljs.reader/read-string (first s))))
@@ -388,7 +391,11 @@
     :else {:role (get-variable-role t) :name (keyword (str/lower-case t)) :value t}))
 
 (defn add-start-end-impl [ts start n]
-  (let [token-length (count (str (:value (get ts n))))
+  (let [token (get ts n)
+        token-value (:value token)
+        token-length (cond (ruru-string? token-value) (count (second token-value))
+                           (and (:role-changed token) (= :variable (:role token))) (+ (count (str token-value)) 1) 
+                           :else (count (str token-value)))
         new-start (+ start token-length)]
     (cond (< n (count ts)) (add-start-end-impl
                             (-> ts
@@ -565,14 +572,19 @@
 
 (defn highlight-selection-impl [s selection]
   [:span (subs s 0 selection)
-   [:span {:style {:background-color "lightgrey" "border-left" "1px solid black"}} (get s selection)] [:span (subs s (+ 1 selection))]])
+   [:span {:style {:background-color "lightgrey" "border-left" "1px solid black"}}
+    (let [highlighted (get s selection)]
+      highlighted)]
+   [:span (subs s (+ 1 selection))]])
 
 (defn selection-in-string? [s selection]
   (and (>= selection 0) (< selection (count s))))
 
 (defn highlight-selection [s selection]
   (cond
-    (and (= 1 (count s)) (= 0 selection)) [:span {:style {:background-color "lightgrey" "border-left" "1px solid black"}} s]
+    (and (= 1 (count s)) (= 0 selection)) [:span
+                                           {:style {:background-color "lightgrey" "border-left" "1px solid black"}}
+                                           s]
     (selection-in-string? s selection) (highlight-selection-impl s selection)
     :else [:span s]))
 
@@ -588,8 +600,9 @@
   (let [selection (+ 0 (- selection (:start t)))
         val (:value t)]
     (cond
-      (and (seq? val) (= :#_string (first val))) [:span {:style {:color "red"}} (highlight-selection (str "\"" (second val) "\"") selection)]
-      (= "\n" (:value t)) [:br]
+      (= "," (:value t)) [:span {:style {:color "black"}} (highlight-selection (:value t) selection)]
+      (ruru-string? val) [:span {:style {:color "red"}} (highlight-selection (second val) selection)]
+      (= "\n" (:value t)) [:span (highlight-selection " \n" selection)]
       (contains? #{"\n\t" "\n  " "\n    "} (:value t)) [:span "\n" [:span {:style {"border-left" "1px solid pink"}} (highlight-selection (subs (:value t) 1) selection)]]
       (= :whitespace (:role t)) [:span (highlight-selection (:value t) selection)]
       (= :function (:role t)) [:span {:style {:color "blue" :font-weight "bold"}} (highlight-selection (:value t) selection)]

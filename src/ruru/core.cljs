@@ -24,10 +24,14 @@
 
 (defn atom-input [value selection cell-id]
   [:textarea {:type "text"
-              :rows 1
+              :rows (count (str/split-lines @value))
               :cols 90
               :style ruru/cell-input-style
-              :value @value
+              :value (str/replace @value #"\\ " "‿")
+              :on-click #(reset! selection
+                          (-> %
+                              .-target
+                              .-selectionStart))
               :on-change #(do
                             (reset! value
                                     (-> %
@@ -65,7 +69,7 @@
     [:div {:style {:outline "2px solid grey"
                    "max-height" "15em"
                    "overflow-x" "scroll" "overflow-y" "scroll" "white-space" "nowrap"}}
-     [:span (str (apply str (interpose "x" dims)) " array\n")]
+     [:span (str (apply str (interpose "×" dims)) " array\n")]
      (into [] (concat [:table {:style {:border "0px solid black"}}] (map #(cols->row-hiccup cols %) (range (first dims)))))]))
 
 (defn show-map [m & header-names]
@@ -83,20 +87,24 @@
 (defn extract-list [v]
   (mapv #(if (ruru/ruru-array? %) (extract-list (% 'value)) %) v))
 
+
+(defn extract-string-scalar [x]
+  (cond (ruru/ruru-string? x) (second x)
+        (map? x) (into {} (for [[k v] x] [(extract-string-scalar k) (extract-string-scalar v)]))
+        :else x))
+
 (defn extract-string [v]
   (mapv #(cond
-           (and (seq? %) (= :#_string (first %))) (second %)
-           (sequential? %) (extract-string %)
-           :else %) v))
+           (vector? %) (extract-string %)
+           :else (extract-string-scalar %)) v))
 
 (defn show-html [x]
-  (cond (ruru/ruru-array? (x 'html))
-        (extract-string (first (extract-list [(x 'html)])))
+  (cond (ruru/ruru-array? (x 'html)) (extract-string (first (extract-list [(x 'html)])))
         :else (x 'html)))
 
 (defn show-result [r]
   (cond
-    (ruru/ruru-string? r) [:span {:style {:color "red"}} (str "\"" (second r) "\"")]
+    (ruru/ruru-string? r) [:span {:style {:color "red"}} (second r)]
     (ruru/ruru-array? r) (show-array r)
     (ruru/html? r) (show-html r)
     (map? r) (show-map r)
@@ -121,10 +129,14 @@
   (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
         defined-vars (into {} (for [k ks] [k (:value (get env k nil))]))]
     [:div {:style {"max-width" "400px" :overflow "scroll" :outline "2px solid grey"}}
-     (show-map defined-vars "Name" "Value")]))
+     (show-map defined-vars "Variable name" "Value")]))
+
+(defonce coord (atom [0 0]))
+(defonce cell-focus (atom 0))
 
 (defn notebook-page []
-  (fn [] [:sp.main
+  (fn [] [:span.main
+          {:on-click #(reset! cell-focus (-> %))}
           [:title "ruru notebook"]
           ; TODO use a grid to format better
           [:div [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
