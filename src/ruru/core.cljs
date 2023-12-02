@@ -89,7 +89,7 @@
 
 
 (defn extract-string-scalar [x]
-  (cond (ruru/ruru-string? x) (second x)
+  (cond (ruru/ruru-string? x) (subs (second x) 1 (dec (count (second x))))
         (map? x) (into {} (for [[k v] x] [(extract-string-scalar k) (extract-string-scalar v)]))
         :else x))
 
