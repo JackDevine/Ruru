@@ -58,8 +58,7 @@
 
 (defn mul [x y]
   (let [xdims (get x 'array_dims [])
-        ydims (get y 'array_dims [])
-        _ (println xdims)]
+        ydims (get y 'array_dims [])]
     (cond (not= 0 (reduce + (map empty? [xdims ydims]))) '(error "Not implemented")
           :else (mul-impl x y xdims ydims))))
 
@@ -139,8 +138,10 @@
    :reduce {:role :function :arity 2 :value (fn [coll op] (reduce op (coll 'value)))}
    :filter {:role :function
             :arity 2
-            :value (fn [coll pred] (let [filtered (filterv pred (coll 'value))]
-                                     {'array_dims [(count filtered) 1] 'value filtered}))}
+            :value (fn [coll pred] (if (not (fn? pred))
+                                     (list 'error (str pred " is not a function"))
+                                     (let [filtered (filterv pred (coll 'value))]
+                                       {'array_dims [(count filtered) 1] 'value filtered})))}
    :map {:role :function :arity 2 :value (fn [v f] {'array_dims (v 'array_dims) 'value (mapv f (v 'value))})}
    :is_even {:role :function :arity 1 :value even?}
    :identity {:role :function :arity 1 :value identity}
@@ -242,8 +243,9 @@
     (lambda? f env) (lambda-apply f (map #(first (ruru-eval %1 env)) args) env)
     (assignment? f) (ruru-set (first args) (rest args) env)
     (assignment-into? f) (ruru-set-into (take (- (count args) 1) args) (last args) env)
-    :else [(apply (get-in env [f :value] (list 'error (str "Undefined function " f)))
-                  (map #(first (ruru-eval %1 env)) args)) env]))
+    :else [(let [f-value (get-in env [f :value] (list 'error (str "Undefined function " f)))
+                 is-error (and (seq? f-value) (= 'error (first f-value)))]
+             (if is-error f-value (apply f-value (map #(first (ruru-eval %1 env)) args)))) env]))
 
 (defn ruru-eval [exp env]
   (let [exp (if (seq? exp)
@@ -394,6 +396,7 @@
   (let [token (get ts n)
         token-value (:value token)
         token-length (cond (ruru-string? token-value) (count (second token-value))
+                           (comment? token-value) (count (second token-value))
                            (and (:role-changed token) (= :variable (:role token))) (+ (count (str token-value)) 1) 
                            :else (count (str token-value)))
         new-start (+ start token-length)]
@@ -577,16 +580,25 @@
       highlighted)]
    [:span (subs s (+ 1 selection))]])
 
-(defn selection-in-string? [s selection]
-  (and (>= selection 0) (< selection (count s))))
-
-(defn highlight-selection [s selection]
-  (cond
-    (and (= 1 (count s)) (= 0 selection)) [:span
-                                           {:style {:background-color "lightgrey" "border-left" "1px solid black"}}
-                                           s]
-    (selection-in-string? s selection) (highlight-selection-impl s selection)
-    :else [:span s]))
+(defn highlight-selection [unhighlighted-hiccup tokens selected-token-index selection]
+  (cond (nil? selection) unhighlighted-hiccup
+        (and (empty? tokens) (not (nil? selection))) [[:span
+                                                       {:style {:background-color "lightgrey" "border-left" "1px solid black"}}
+                                                       " "]]
+        (empty? tokens) []
+        (> selection ((last tokens) :end)) (into []
+                                                 (concat
+                                                  unhighlighted-hiccup
+                                                  [[:span
+                                                    {:style {:background-color "lightgrey" "border-left" "1px solid black"}}
+                                                    " "]]))
+        (nil? selected-token-index) unhighlighted-hiccup
+        :else (let [target-hiccup (nth unhighlighted-hiccup selected-token-index)
+                    selected-token (nth tokens selected-token-index)
+                    start (selected-token :start)
+                    s (last target-hiccup)
+                    target-hiccup (assoc-in target-hiccup [2] (highlight-selection-impl s (- selection start)))]
+                (assoc-in unhighlighted-hiccup [selected-token-index] target-hiccup))))
 
 (def cell-input-style
   {:background-color "white"
@@ -596,35 +608,62 @@
    :autocapitalize "off"
    :spellcheck "false"})
 
-(defn token->hiccup [t selection]
-  (let [selection (+ 0 (- selection (:start t)))
-        val (:value t)]
+(defn token->hiccup [t]
+  (let
+   [val (:value t)]
     (cond
-      (= "," (:value t)) [:span {:style {:color "black"}} (highlight-selection (:value t) selection)]
-      (ruru-string? val) [:span {:style {:color "red"}} (highlight-selection (second val) selection)]
-      (= "\n" (:value t)) [:span (highlight-selection " \n" selection)]
-      (contains? #{"\n\t" "\n  " "\n    "} (:value t)) [:span "\n" [:span {:style {"border-left" "1px solid pink"}} (highlight-selection (subs (:value t) 1) selection)]]
-      (= :whitespace (:role t)) [:span (highlight-selection (:value t) selection)]
-      (= :function (:role t)) [:span {:style {:color "blue" :font-weight "bold"}} (highlight-selection (:value t) selection)]
-      (and (:role-changed t) (= :variable (:role t))) [:span (highlight-selection (str "~" (subs (str (:name t)) 1)) selection)]
-      (= :variable (:role t)) [:span (highlight-selection (subs (str (:name t)) 1) selection)]
-      (= :number (:role t)) [:span {:style {:color "grey"}} (highlight-selection (str (:value t)) selection)]
-      (= :comment (:role t)) [:span {:style {:font-style "italic" :color "green"}} (highlight-selection (second (:value t)) selection)]
-      :else (highlight-selection (str (:value t)) selection))))
+      (= "," val) [:span {:style {:color "black"}} val]
+      (ruru-string? val) [:span {:style {:color "red"}} (second val)]
+      (= "\n" val) [:span {} " \n"]
+      (contains? #{"\n\t" "\n  " "\n    "} val) [:span
+                                                 {}
+                                                 "\n"
+                                                 [:span
+                                                  {:style {"border-left" "1px solid pink"}}
+                                                  (subs val 1)]]
+      (= :whitespace (:role t)) [:span {} val]
+      (= :function (:role t)) [:span {:style {:color "blue" :font-weight "bold"}} val]
+      (and (:role-changed t) (= :variable (:role t))) [:span
+                                                       (str "~" (subs (str (:name t)) 1))]
+      (= :variable (:role t)) [:span {} (subs (str (:name t)) 1)]
+      (= :number (:role t)) [:span {:style {:color "grey"}} (str val)]
+      (= :comment (:role t)) [:span
+                              {:style {:font-style "italic" :color "green"}}
+                              (second val)]
+      :else [:span {} (str val)])))
 
+(defn selection-in-token [token selection]
+  (and (<= (token :start) selection) (<= selection (token :end))))
+
+(defn find-selected-token-impl [tokens selection [lower upper]]
+  (let [lower-token (nth tokens lower)
+        upper-token (nth tokens upper)
+        center (Math/ceil (/ (+ lower upper) 2))
+        center-token (nth tokens center)]
+    (cond
+      (selection-in-token lower-token selection) lower
+      (selection-in-token center-token selection) center
+      (selection-in-token upper-token selection) upper
+      :else (cond
+              (> selection (center-token :end)) (find-selected-token-impl tokens selection [(inc center) (dec upper)])
+              (< selection (center-token :start)) (find-selected-token-impl tokens selection [(inc lower) (dec center)])
+              :else nil))))
+
+(defn find-selected-token [tokens selection [lower upper]]
+  (cond (empty? tokens) nil
+        (or (< selection 0) (> selection ((last tokens) :end))) nil
+        :else (find-selected-token-impl tokens selection [lower upper])))
 
 (defn get-hiccup-exp [exp selection]
-  (let [tokens (into [] (tokenize exp))]
-    (cond (empty? tokens) [""]
-          :else (mapv #(token->hiccup %1 selection) tokens))))
+  (let [tokens (into [] (tokenize exp))
+        selected-token-index (find-selected-token tokens selection [0 (dec (count tokens))])
+        unhighlighted-hiccup (mapv token->hiccup tokens)]
+    (highlight-selection unhighlighted-hiccup tokens selected-token-index selection)))
 
 (defn get-hiccup [s selection]
   (let [exp-list (if (string? s) (expression-list s) s)
-        token-list (apply concat (interpose '("\n") exp-list))
-        n-chars (reduce #(+ %1 (count %2)) 0 token-list)
-        hiccup-val (get-hiccup-exp token-list selection)]
-    (cond (< selection n-chars) hiccup-val
-          :else (into [] (concat hiccup-val [[:span {:style {:background-color "lightgrey" "border-left" "1px solid black"}} " "]])))))
+        token-list (apply concat (interpose '("\n") exp-list))]
+    (get-hiccup-exp token-list selection)))
 
 (defn interpret-tokens [t env]
   (-> t

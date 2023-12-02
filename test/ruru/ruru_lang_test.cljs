@@ -136,6 +136,30 @@
     (is (= (-> (ruru/interpret "[1‿2,3]" ruru/default-environment) first)
            {'array_dims [2 1] 'value [{'array_dims [2 1] 'value [1 2]} 3]}))))
 
+(def find-token-test-data (-> "2 %{a comment}% Square"
+                               (ruru/get-first-exp '() [0 0 0])
+                               second
+                               ruru/tokenize))
+
+(deftest find-selected-token
+  (testing "Find the selected token with binary search"
+    (is (= (ruru/find-selected-token find-token-test-data 0 [0 (dec (count find-token-test-data))])
+           0))
+    (is (= (ruru/find-selected-token find-token-test-data 1 [0 (dec (count find-token-test-data))])
+           1))
+    (is (= (ruru/find-selected-token find-token-test-data 2 [0 (dec (count find-token-test-data))])
+           2))
+    (is (= (ruru/find-selected-token find-token-test-data 3 [0 (dec (count find-token-test-data))])
+           2))
+    (is (= (ruru/find-selected-token find-token-test-data 15 [0 (dec (count find-token-test-data))])
+           3))
+    (is (= (ruru/find-selected-token find-token-test-data 21 [0 (dec (count find-token-test-data))])
+           4))
+    (is (= (ruru/find-selected-token find-token-test-data 22 [0 (dec (count find-token-test-data))])
+           nil))
+    (is (= (ruru/find-selected-token find-token-test-data -1 [0 (dec (count find-token-test-data))])
+           nil))))
+
 (deftest interpret-test
   (testing "Interpret expressions"
     (is (= (first (ruru/interpret "2+2" env))
@@ -256,6 +280,13 @@
     (is (= (-> (ruru/interpret "1:6Filter is_even" ruru/default-environment) first)
            {'array_dims [3 1] 'value [2 4 6]}))
     (is (= (-> (ruru/interpret "1:20Filter is_even Map square Reduce~+" ruru/default-environment) first)
-           1540))))
+           1540))
+    (is (= (-> (ruru/interpret "2 S" ruru/default-environment) first)
+           '(error "Undefined function :s")))
+    (is (= (-> (ruru/interpret "1:10Filter is_" ruru/default-environment) first first)
+           'error))
+;;     (is (= (-> (ruru/interpret "1:10Map sq" ruru/default-environment) first first)
+;;            'error))
+    ))
 
 (run-tests ruru.ruru-lang-test)

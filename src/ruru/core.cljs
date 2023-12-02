@@ -6,7 +6,7 @@
    [reagent.dom :as rdom]
    [ruru.ruru-lang :as ruru]))
 
-(defonce cells (atom [{:val "" :selection 0 :result nil :expression-list '()}]))
+(defonce cells (atom [{:val "" :selection nil :result nil :expression-list '()}]))
 
 (defonce notebook-environment (atom ruru/default-environment))
 
@@ -28,10 +28,10 @@
               :cols 90
               :style ruru/cell-input-style
               :value (str/replace @value #"\\ " "‿")
-              :on-click #(reset! selection
-                          (-> %
-                              .-target
-                              .-selectionStart))
+              :on-blur #(reset! selection nil)
+              :on-click #(reset! selection (-> %
+                                               .-target
+                                               .-selectionStart))
               :on-change #(do
                             (reset! value
                                     (-> %
@@ -123,7 +123,7 @@
     (show-result (get-in @cells [cell-id :result])) [:br]]])
 
 (defn add-new-cell! []
-  (do (swap! cells #(into [] (concat % [{:val "" :selection 0 :result nil :expression-list '()}])))))
+  (do (swap! cells #(into [] (concat % [{:val "" :selection nil :result nil :expression-list '()}])))))
 
 (defn show-environment [env]
   (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
@@ -152,7 +152,6 @@
            [:button {:on-click add-new-cell!} "Create new cell"]
            [:button {:on-click #(reset! notebook-environment ruru/default-environment)} "Reset notebook"]
            [:div {:style {:position "absolute" :top 0 :right 0}} (show-environment @notebook-environment)]]]))
-
 
 (defn get-app-element []
   (gdom/getElement "app"))
