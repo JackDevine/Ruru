@@ -81,7 +81,7 @@
     (is (= :whitespace (:role (ruru/token-value "\n  "))))))
 
 (deftest get-first-exp-test
-  (testing "Get fisrt expression"
+  (testing "Get first expression"
     (is (= (second (ruru/get-first-exp "2+2" '() [0 0 0])) '("2" "+" "2")))
     (is (= (second (ruru/get-first-exp "2+2\n\t3+4" '() [0 0 0])) '("2" "+" "2" "\n\t" "3" "+" "4")))
     (is (= (second (ruru/get-first-exp "2+(2\n3+4)+2\n4-5" '() [0 0 0]))
@@ -91,7 +91,9 @@
     (is (= (second (ruru/get-first-exp "2{x+y\nx*y}4" '() [0 0 0]))
            '("2" "{" "x" "+" "y" "\n" "x" "*" "y" "}" "4")))
     (is (= (second (ruru/get-first-exp "2+%{a multi\nline\ncomment}%4" '() [0 0 0]))
-           '("2" "+" (:#_ "%{a multi\nline\ncomment}%") "4")))))
+           '("2" "+" (:#_ "%{a multi\nline\ncomment}%") "4")))
+    (is (= (second (ruru/get-first-exp "['span,\"hallo\"]" '() [0 0 0]))
+           '("[" "'" "span" "," (:#_string "\"hallo\"") "]")))))
 
 (deftest first-delimeter-test
   (testing "First delimeter test"
@@ -133,6 +135,30 @@
             {:role :number :value 3}]))
     (is (= (-> (ruru/interpret "[1‿2,3]" ruru/default-environment) first)
            {'array_dims [2 1] 'value [{'array_dims [2 1] 'value [1 2]} 3]}))))
+
+(def find-token-test-data (-> "2 %{a comment}% Square"
+                               (ruru/get-first-exp '() [0 0 0])
+                               second
+                               ruru/tokenize))
+
+(deftest find-selected-token
+  (testing "Find the selected token with binary search"
+    (is (= (ruru/find-selected-token find-token-test-data 0 [0 (dec (count find-token-test-data))])
+           0))
+    (is (= (ruru/find-selected-token find-token-test-data 1 [0 (dec (count find-token-test-data))])
+           1))
+    (is (= (ruru/find-selected-token find-token-test-data 2 [0 (dec (count find-token-test-data))])
+           2))
+    (is (= (ruru/find-selected-token find-token-test-data 3 [0 (dec (count find-token-test-data))])
+           2))
+    (is (= (ruru/find-selected-token find-token-test-data 15 [0 (dec (count find-token-test-data))])
+           3))
+    (is (= (ruru/find-selected-token find-token-test-data 21 [0 (dec (count find-token-test-data))])
+           4))
+    (is (= (ruru/find-selected-token find-token-test-data 22 [0 (dec (count find-token-test-data))])
+           nil))
+    (is (= (ruru/find-selected-token find-token-test-data -1 [0 (dec (count find-token-test-data))])
+           nil))))
 
 (deftest interpret-test
   (testing "Interpret expressions"
@@ -213,11 +239,54 @@
     (is (= (-> (ruru/interpret "2 {x*2} => w" env) first) 4))
     (is (= (-> (ruru/interpret "2+(2\nSquare)" env) first) 6))
     (is (= (-> (ruru/interpret "[1, (2-3),\n (3+2),  4]" env) first) {'array_dims [4 1] 'value [1 -1 5 4]}))
-    (is (= (-> (ruru/interpret "\"hallo\"string\" world\"" env) first) "hallo world"))
+    (is (= (-> (ruru/interpret "\"hallo\"string\" world\"" env) first) '(:#_string "\"hallo world\"")))
     (is (= (-> (ruru/interpret "1:6Reshape[2, 3]" ruru/default-environment) first) {'array_dims [2 3] 'value [1 2 3 4 5 6]}))
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@[2,2]" ruru/default-environment) first) 5))
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@6" ruru/default-environment) first) 6))
     (is (= (-> (ruru/interpret "1:6Reshape[3,2]@[4,2]" ruru/default-environment) first)
-           '(error "Indeces [4 2] out of bounds for array of size [3 2]")))))
+           '(error "Indeces [4 2] out of bounds for array of size [3 2]")))
+    (is (= (-> (ruru/interpret "\"a string\"First" ruru/default-environment) first)
+           '(:#_string "\"a\"")))
+    (is (= (-> (ruru/interpret "\"a string\"Upper_case" ruru/default-environment) first)
+           '(:#_string "\"A STRING\"")))
+    (is (= (-> (ruru/interpret "\"A StrIng\"Lower_case" ruru/default-environment) first)
+           '(:#_string "\"a string\"")))
+    (is (= (-> (ruru/interpret "\"A StrIng\"First" ruru/default-environment) first)
+           '(:#_string "\"A\"")))
+    (is (= (-> (ruru/interpret "\"A StrIng\"@3" ruru/default-environment) first)
+           '(:#_string "\"S\"")))
+    (is (= (-> (ruru/interpret "'[1,2,3]" ruru/default-environment) first)
+           {'array_dims [3 1] 'value [1 2 3]}))
+    (is (= (-> (ruru/interpret "'pi" ruru/default-environment) first)
+           :pi))
+    (is (= (-> (ruru/interpret "'2" ruru/default-environment) first)
+           2))
+    (is (= (-> (ruru/interpret "'[2+2,3]" ruru/default-environment) first)
+           {'array_dims [2 1] 'value ['(2 :+ 2) 3]}))
+    (is (= (-> (ruru/interpret "'[q, [3, 5]]" ruru/default-environment) first)
+           {'array_dims [2 1] 'value [:q {'array_dims [2 1] 'value [3 5]}]}))
+    (is (= (-> (ruru/interpret "'(2+2)" ruru/default-environment) first)
+           '(2 :+ 2)))
+    (is (= (-> (ruru/interpret "'((2*3)+2)First" ruru/default-environment) first)
+           '(2 :* 3)))
+    (is (= (-> (ruru/interpret "'((2*3)+2)Last" ruru/default-environment) first)
+           2))
+    (is (= (-> (ruru/interpret "'((2*3)+2)@1" ruru/default-environment) first)
+           '(2 :* 3)))
+    (is (= (-> (ruru/interpret "['span,\"hallo\"]" ruru/default-environment) first)
+           {'array_dims [2 1] 'value [:span '(:#_string "\"hallo\"")]}))
+    (is (= (-> (ruru/interpret "('q)" ruru/default-environment) first)
+           :q))
+    (is (= (-> (ruru/interpret "1:6Filter is_even" ruru/default-environment) first)
+           {'array_dims [3 1] 'value [2 4 6]}))
+    (is (= (-> (ruru/interpret "1:20Filter is_even Map square Reduce~+" ruru/default-environment) first)
+           1540))
+    (is (= (-> (ruru/interpret "2 S" ruru/default-environment) first)
+           '(error "Undefined function :s")))
+    (is (= (-> (ruru/interpret "1:10Filter is_" ruru/default-environment) first first)
+           'error))
+;;     (is (= (-> (ruru/interpret "1:10Map sq" ruru/default-environment) first first)
+;;            'error))
+    ))
 
 (run-tests ruru.ruru-lang-test)
