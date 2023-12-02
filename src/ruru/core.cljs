@@ -4,7 +4,23 @@
    [clojure.string :as str]
    [reagent.core :as reagent :refer [atom]]
    [reagent.dom :as rdom]
+   [reitit.frontend :as rf]
+   [reitit.frontend.easy :as rfe]
+   [reitit.coercion.spec :as rss]
    [ruru.ruru-lang :as ruru]))
+
+(defn home-page []
+  [:div
+   [:title "ruru notebook"]
+   ; TODO use a grid to format better
+   [:div [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
+    [:div {:style {:font-size "2em" :margin-top "-75px" :margin-left "110px"}}
+     "Welcome to ruru"]]
+   [:br]
+   [:br]
+   [:div "A lightweight programming environment for solving problems of any size."]
+   [:ul
+    [:li [:a {:href (rfe/href ::notebook)} "Open an interactive notebook"]]]])
 
 (defonce cells (atom [{:val "" :selection nil :result nil :expression-list '()}]))
 
@@ -137,15 +153,6 @@
 (defn notebook-page []
   (fn [] [:span.main
           {:on-click #(reset! cell-focus (-> %))}
-          [:title "ruru notebook"]
-          ; TODO use a grid to format better
-          [:div [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
-           [:div {:style {:font-size "2em" :margin-top "-75px" :margin-left "110px"}}
-            "Welcome to ruru"]]
-          [:br]
-          [:br]
-          [:div "A lightweight programming environment for solving problems of any size."]
-          [:br]
           [:div {:style {"max-width" "700px"}}
            (into [] (concat [:div] (mapv #(create-cell (reagent/cursor cells [% :val]) (reagent/cursor cells [% :selection]) %) (range (count @cells)))))
            [:button {:style {:margin-top "10px"} :on-click #(swap! cells (fn [c] (into [] (drop-last c))))} "Delete"]
@@ -157,7 +164,7 @@
   (gdom/getElement "app"))
 
 (defn mount [el]
-  (rdom/render [notebook-page] el))
+  (rdom/render [home-page] el))
 
 (defn mount-app-element []
   (when-let [el (get-app-element)]
@@ -165,12 +172,42 @@
 
 ;; conditionally start your application based on the presence of an "app" element
 ;; this is particularly helpful for testing this ns without launching the app
-(mount-app-element)
+;; (mount-app-element)
+
+(defonce match (reagent/atom nil))
+
+(defn current-page []
+  [:div
+   (if @match
+     (let [view (:view (:data @match))]
+       [view @match]))
+  ;;  [:pre (with-out-str (fedn/pprint @match))]
+   ])
+
+(def routes
+  [["/"
+    {:name ::frontpage
+     :view home-page}]
+   ["/notebook"
+    {:name ::notebook
+     :view notebook-page}]])
+
+(defn init! []
+  (rfe/start!
+   (rf/router routes {:data {:coercion rss/coercion}})
+   (fn [m] (reset! match m))
+    ;; set to false to enable HistoryAPI
+   {:use-fragment true})
+  (rdom/render [current-page] (.getElementById js/document "app")))
 
 ;; specify reload hook with ^:after-load metadata
 (defn ^:after-load on-reload []
-  (mount-app-element)
+  (do 
+    (mount-app-element)
+    (init!))
   ;; optionally touch your app-state to force rerendering depending on
   ;; your application
   ;; (swap! app-state update-in [:__figwheel_counter] inc)
 )
+
+(init!)
