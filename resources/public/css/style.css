@@ -57,12 +57,19 @@ h3 {
 }
 
 a {
-  text-decoration: none;
   color: #09f;
+  text-decoration: none;
 }
-
 a:hover {
   text-decoration: underline;
+}
+a:visited {
+  color: purple;
+  background-color: transparent;
+}
+a:active {
+  color: #ffe600;
+  background-color: transparent;
 }
 
 button {

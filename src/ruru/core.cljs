@@ -7,15 +7,17 @@
    [reitit.frontend :as rf]
    [reitit.frontend.easy :as rfe]
    [reitit.coercion.spec :as rss]
+   [clojure.edn :as edn]
    [ruru.ruru-lang :as ruru]))
 
 (defn home-page []
   [:div
-   [:title "ruru notebook"]
+   [:title "Welcome to ruru"]
    ; TODO use a grid to format better
    [:div [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
     [:div {:style {:font-size "2em" :margin-top "-75px" :margin-left "110px"}}
      "Welcome to ruru"]]
+   [:br]
    [:br]
    [:br]
    [:div "A lightweight programming environment for solving problems of any size."]
@@ -144,16 +146,56 @@
 (defn show-environment [env]
   (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
         defined-vars (into {} (for [k ks] [k (:value (get env k nil))]))]
-    [:div {:style {"max-width" "400px" :overflow "scroll" :outline "2px solid grey"}}
+    [:div {:style {"maxWidth" "400px" :overflow "scroll" :outline "2px solid grey"}}
      (show-map defined-vars "Variable name" "Value")]))
 
-(defonce coord (atom [0 0]))
 (defonce cell-focus (atom 0))
+
+(defonce saved-state (atom '()))
+
+(defonce notebook-name (atom ""))
+
+(defn save-as-input [name]
+  [:input {:type "text"
+              :value @name
+              :on-change #(reset! name
+                           (-> %
+                               .-target
+                               .-value))}])
+
+(defn load-notebook [name]
+  (let [cell-data (.getItem (.-localStorage js/window) name)
+        cell-data (edn/read-string cell-data)]
+    (reset! cells (mapv (fn [x] {:val x :selection nil :result nil
+                                 :expression-list (ruru/expression-list x)}) cell-data))))
+
+(defn list-saved-notebooks [saved-state]
+  (let [s @saved-state
+        n (-> (.-localStorage js/window)
+              .-length)
+        notebook-names (for [i (range n)] (.key (.-localStorage js/window) i))]
+    [:div
+     [:ul
+      (for [n notebook-names] [:li {:on-click #(load-notebook n)} n])]]))
 
 (defn notebook-page []
   (fn [] [:span.main
           {:on-click #(reset! cell-focus (-> %))}
-          [:div {:style {"max-width" "700px"}}
+          [:title "Ruru notebook"]
+          [:div [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]]
+          [:br]
+          [:div (save-as-input notebook-name)
+           [:button
+            {:on-click #(let [cells-edn (pr-str (mapv :val @cells))]
+                          (do
+                            (.setItem (.-localStorage js/window) @notebook-name
+                                      cells-edn)
+                            (reset! saved-state cells-edn)))}
+            "Save notebook"]]
+          [:div (list-saved-notebooks saved-state)]
+          [:br]
+          [:br]
+          [:div {:style {"maxWidth" "700px"}}
            (into [] (concat [:div] (mapv #(create-cell (reagent/cursor cells [% :val]) (reagent/cursor cells [% :selection]) %) (range (count @cells)))))
            [:button {:style {:margin-top "10px"} :on-click #(swap! cells (fn [c] (into [] (drop-last c))))} "Delete"]
            [:button {:on-click add-new-cell!} "Create new cell"]
