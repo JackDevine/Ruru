@@ -600,14 +600,6 @@
                     target-hiccup (assoc-in target-hiccup [2] (highlight-selection-impl s (- selection start)))]
                 (assoc-in unhighlighted-hiccup [selected-token-index] target-hiccup))))
 
-(def cell-input-style
-  {:background-color "white"
-   :font-family "monospace"
-   :autocomplete "off"
-   :autocorrect "off"
-   :autocapitalize "off"
-   :spellcheck "false"})
-
 (defn token->hiccup [t]
   (let
    [val (:value t)]
