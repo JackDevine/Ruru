@@ -46,6 +46,7 @@
               :rows (count (str/split-lines @value))
               :cols 90
               :style style/cell-input-style
+              :id (str "ruru-cell-" cell-id)
               :value (str/replace @value #"\\ " "‿")
               :on-blur #(reset! selection nil)
               :on-click #(reset! selection (-> %
@@ -147,8 +148,6 @@
     [:div {:style style/variable-explorer-style}
      (show-map defined-vars "Variable name" "Value")]))
 
-(defonce cell-focus (atom 0))
-
 (defonce saved-notebooks (atom []))
 
 (defonce notebook-name (atom ""))
@@ -190,6 +189,13 @@
                 (update-saved-notebooks!)
                 (reset! current-notebook name))))
 
+(defn select-cell! [n]
+  (swap! cells (fn [x] (assoc-in x [n :selection] (count (get-in x [n :val])))))
+  (swap! cells (fn [x] (assoc-in x [n :focus] true)))
+  (-> js/document
+      (.getElementById "ruru-cell-0")
+      .focus))
+
 (defn save-notebook!
   ([name]
    (save-notebook-impl! name (pr-str (mapv :val @cells))))
@@ -205,7 +211,8 @@
                                    :expression-list (ruru/expression-list x)}) cell-data))
       (reset! notebook-name name)
       (reset! current-notebook @notebook-name)
-      (run-cells! cells @notebook-environment 0))))
+      (run-cells! cells @notebook-environment 0)
+      (select-cell! 0))))
 
 (defn list-saved-notebooks [saved-notebooks]
   [:div
@@ -246,11 +253,11 @@
 
 (defn notebook-page []
   (fn [] [:span.main
-          {:on-click #(reset! cell-focus (-> %))
-           :on-load #(do (update-saved-notebooks!)
+          {:on-load #(do (update-saved-notebooks!)
                          (load-notebook (first @saved-notebooks))
                          (reset! selected-notebook (first @saved-notebooks))
-                         (reset! current-notebook (first @saved-notebooks)))
+                         (reset! current-notebook (first @saved-notebooks))
+                         (select-cell! 0))
           ;;  :on-key-down (fn [e]
           ;;                 (if (and (.-ctrlKey e) (= "s" (.-key e)))
           ;;                   (do
