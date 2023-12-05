@@ -176,7 +176,11 @@
   (let [n (.-length (.-localStorage js/window))
         notebooks (for [i (range n)]
                     (.key (.-localStorage js/window) i))]
-    (reset! saved-notebooks notebooks)))
+    (if (empty? notebooks)
+      (do (reset! saved-notebooks '("untitled.ruru"))
+          (.setItem (.-localStorage js/window) "untitled.ruru"
+                    [""]))
+      (reset! saved-notebooks notebooks))))
 
 (defn available-name [saved-notebooks notebook-name]
   (let [[name extension] (str/split notebook-name #"\.")]
