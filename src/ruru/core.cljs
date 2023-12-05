@@ -37,8 +37,12 @@
 (defn run-cells! [cells env n]
   (cond (= n (count @cells)) (reset! notebook-environment env)
         :else (let [cell-exp-list (:expression-list (@cells n))
-                    [cell-result new-env] (ruru/interpret-exp-list cell-exp-list env)]
+                    [[cell-result new-env] time] (let [start (. js/performance now)
+                                                       res (ruru/interpret-exp-list cell-exp-list env)
+                                                       end (. js/performance now)]
+                                                   [res (- end start)])]
                 (do (swap! cells assoc-in [n :result] cell-result)
+                    (swap! cells assoc-in [n :execution] time)
                     (run-cells! cells new-env (inc n))))))
 
 (defn atom-input [value selection cell-id]
@@ -136,8 +140,10 @@
    [:div {:class "outer"}
     [:div {:class "top" :style {:opacity 0}} [atom-input val selection cell-id]]
     (into [] (concat formatted-input (ruru/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
-   [:div {:style style/cell-output-style}
-    (show-result (get-in @cells [cell-id :result])) [:br]]])
+   [:div {:style style/cell-output-style} [:div {:class "grid-container"}
+    [:div (show-result (get-in @cells [cell-id :result]))]
+    [:div {:style {:text-align "right"}}
+     (str (get-in @cells [cell-id :execution] "") "ms")]]]])
 
 (defn add-new-cell! []
   (do (swap! cells #(into [] (concat % [{:val "" :selection nil :result nil :expression-list '()}])))))

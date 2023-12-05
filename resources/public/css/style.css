@@ -79,3 +79,9 @@ button {
   border-radius: 10px;
   font-size: 1.3em;
 }
+
+.grid-container {
+  display: grid;
+  grid-template-columns: auto auto;
+}
+
