@@ -9,7 +9,8 @@
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/clojurescript "1.11.4"]
                  [org.clojure/core.match "1.0.1"]
-                 [reagent "1.1.1"  :exclusions [cljsjs/react cljsjs/react-dom cljsjs/react-dom-server]]]
+                 [reagent "1.1.1"  :exclusions [cljsjs/react cljsjs/react-dom cljsjs/react-dom-server]]
+                 [metosin/reitit "0.6.0"]]
 
   :source-paths ["src"]
 

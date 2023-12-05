@@ -575,7 +575,7 @@
 
 (defn highlight-selection-impl [s selection]
   [:span (subs s 0 selection)
-   [:span {:style {:background-color "lightgrey" "border-left" "1px solid black"}}
+   [:span {:style {:background-color "lightgrey" "borderLeft" "1px solid black"}}
     (let [highlighted (get s selection)]
       highlighted)]
    [:span (subs s (+ 1 selection))]])
@@ -583,14 +583,14 @@
 (defn highlight-selection [unhighlighted-hiccup tokens selected-token-index selection]
   (cond (nil? selection) unhighlighted-hiccup
         (and (empty? tokens) (not (nil? selection))) [[:span
-                                                       {:style {:background-color "lightgrey" "border-left" "1px solid black"}}
+                                                       {:style {:background-color "lightgrey" "borderLeft" "1px solid black"}}
                                                        " "]]
         (empty? tokens) []
         (> selection ((last tokens) :end)) (into []
                                                  (concat
                                                   unhighlighted-hiccup
                                                   [[:span
-                                                    {:style {:background-color "lightgrey" "border-left" "1px solid black"}}
+                                                    {:style {:background-color "lightgrey" "borderLeft" "1px solid black"}}
                                                     " "]]))
         (nil? selected-token-index) unhighlighted-hiccup
         :else (let [target-hiccup (nth unhighlighted-hiccup selected-token-index)
@@ -599,14 +599,6 @@
                     s (last target-hiccup)
                     target-hiccup (assoc-in target-hiccup [2] (highlight-selection-impl s (- selection start)))]
                 (assoc-in unhighlighted-hiccup [selected-token-index] target-hiccup))))
-
-(def cell-input-style
-  {:background-color "white"
-   :font-family "monospace"
-   :autocomplete "off"
-   :autocorrect "off"
-   :autocapitalize "off"
-   :spellcheck "false"})
 
 (defn token->hiccup [t]
   (let
@@ -619,7 +611,7 @@
                                                  {}
                                                  "\n"
                                                  [:span
-                                                  {:style {"border-left" "1px solid pink"}}
+                                                  {:style {"borderLeft" "1px solid pink"}}
                                                   (subs val 1)]]
       (= :whitespace (:role t)) [:span {} val]
       (= :function (:role t)) [:span {:style {:color "blue" :font-weight "bold"}} val]
