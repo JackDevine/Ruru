@@ -85,3 +85,7 @@ button {
   grid-template-columns: auto auto;
 }
 
+.flex-container {
+  display: flex;
+  flex-wrap: wrap;
+}
