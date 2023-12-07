@@ -238,17 +238,18 @@
           :src (if (get-in @cells [cell-id :show-code] false) "assets/favicon.svg" "assets/eye_crossed.svg")
           :style {:width "40px" :height "20px"}}]
    [:div
-    [:div {:class "outer"
-           :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
-     [:div {:class "top"
-            :style {:opacity 0}}
-      [atom-input val selection cell-id]]
-     (into [] (concat formatted-input (ruru/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
+    [:div {:class "grid-container"}
+     [:div {:class "outer"
+            :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
+      [:div {:class "top"
+             :style {:opacity 0}}
+       [atom-input val selection cell-id]]
+      (into [] (concat formatted-input (ruru/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
+     [:div {:style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
+      (str "  " (get-in @cells [cell-id :execution] "") "ms")]]
     [:div {:style style/cell-output-style}
      [:div {:class "grid-container"}
-      [:div (show-result (get-in @cells [cell-id :result]))]
-      [:div {:style {:text-align "right"}}
-       (str (get-in @cells [cell-id :execution] "") "ms")]]]]])
+      [:div (show-result (get-in @cells [cell-id :result]))]]]]])
 
 (defn create-new-notebook-dialog []
   [:span [:button
@@ -322,7 +323,7 @@
            "Hide all cells"]
           [:br]
           [:br]
-          [:div {:style {:padding-left "20px" "maxWidth" "700px"}}
+          [:div {:style {:padding-left "20px" "maxWidth" "1000px"}}
            (into [] (concat [:div] (mapv #(create-cell (reagent/cursor cells [% :val]) (reagent/cursor cells [% :selection]) %) (range (count @cells)))))
            [:button {:style {:margin-top "10px"} :on-click #(swap! cells (fn [c] (into [] (drop-last c))))} "Delete"]
            [:button {:on-click add-new-cell!} "Create new cell"]
