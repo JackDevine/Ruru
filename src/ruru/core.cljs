@@ -30,6 +30,8 @@
 
 (defonce notebook-environment (atom ruru/default-environment))
 
+(defonce loading-done (atom false))
+
 (defn tokenize-cell [cells cell-id]
   (let [cell-val (get-in @cells [cell-id :val])
         new-expression-list (ruru/expression-list (str/replace cell-val #"\\ " "‿"))]
@@ -138,27 +140,6 @@
     (keyword? r) [:span (apply str (rest (str r)))]
     :else [:span (str r)]))
 
-(defn create-cell [val selection cell-id]
-  [:div {:class "flex-container"}
-   [:img {:on-click #(swap! cells (fn [x] (update-in x [cell-id :show-code] not)))
-          :src (if (get-in @cells [cell-id :show-code] false) "assets/favicon.svg" "assets/ruru_icon.png")
-          :style {:width "40px" :height "20px"}}]
-   [:div
-    [:div {:class "outer"
-           :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
-     [:div {:class "top"
-            :style {:opacity 0}}
-      [atom-input val selection cell-id]]
-     (into [] (concat formatted-input (ruru/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
-    [:div {:style style/cell-output-style}
-     [:div {:class "grid-container"}
-      [:div (show-result (get-in @cells [cell-id :result]))]
-      [:div {:style {:text-align "right"}}
-       (str (get-in @cells [cell-id :execution] "") "ms")]]]]])
-
-(defn add-new-cell! []
-  (do (swap! cells #(into [] (concat % [{:val "" :selection nil :result nil :expression-list '() :show-code true}])))))
-
 (defn show-environment [env]
   (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
         defined-vars (into {} (for [k ks] [k (:value (get env k nil))]))]
@@ -173,6 +154,12 @@
   (.setItem (.-localStorage js/window) name
             notebook-content))
 
+(defn hide-all-code [cells-vec]
+  (mapv #(assoc % :show-code false) cells-vec))
+
+(defn show-all-code [cells-vec]
+  (mapv #(assoc % :show-code true) cells-vec))
+
 (defn get-saved-notebooks []
   (let [n (.-length (.-localStorage js/window))]
     (if (= 0 n)
@@ -184,13 +171,15 @@
 (defn available-name [notebook-name]
   (let [[name extension] (str/split notebook-name #"\.")
         saved-notebooks (get-saved-notebooks)]
-    (if (contains? saved-notebooks notebook-name)
-      (str (str name "_edit.") extension)
-      notebook-name)))
+    (cond
+      (= notebook-name "") (available-name "untitled.ruru")
+      (contains? saved-notebooks notebook-name) (str (str name "_edit.") extension)
+      :else notebook-name)))
 
 (defn save-notebook-impl! [name notebook-content]
   (let [saved-notebooks (get-saved-notebooks)]
-    (cond (= "" name) (save-notebook-impl! "untitled.ruru" notebook-content)
+    (cond (= "" name) (do (reset! current-notebook "untitled.ruru")
+                          (save-notebook-impl! "untitled.ruru" notebook-content))
           (and
            (not= name @current-notebook)
            (contains? (set saved-notebooks) name)) (let
@@ -202,7 +191,7 @@
   (swap! cells (fn [x] (assoc-in x [n :selection] (count (get-in x [n :val])))))
   (swap! cells (fn [x] (assoc-in x [n :focus] true)))
   (-> js/document
-      (.getElementById "ruru-cell-0")
+      (.getElementById (str "ruru-cell-" n))
       .focus))
 
 (defn save-notebook!
@@ -213,15 +202,17 @@
 (defn load-notebook [name]
   (let [cell-data (.getItem (.-localStorage js/window) name)
         cell-data (edn/read-string cell-data)]
-    (do
-      (println (str "Loading " name))
-      (reset! notebook-environment ruru/default-environment)
-      (reset! cells (mapv (fn [x] {:show-code (:show-code x)
-                                   :val (:val x)
-                                   :selection nil :result nil
-                                   :expression-list (ruru/expression-list (:val x))}) cell-data))
-      (run-cells! cells @notebook-environment 0)
-      (select-cell! 0))))
+    (if (= (mapv :val cell-data) (mapv :val @cells))
+      nil
+      (do
+        (println (str "Loading " name))
+        (reset! notebook-environment ruru/default-environment)
+        (reset! cells (mapv (fn [x] {:show-code (:show-code x)
+                                     :val (:val x)
+                                     :selection nil :result nil
+                                     :expression-list (ruru/expression-list (:val x))}) cell-data))
+        (run-cells! cells @notebook-environment 0)
+        (select-cell! 0)))))
 
 (defn list-saved-notebooks [saved-notebooks]
   [:div
@@ -234,6 +225,30 @@
               [:span "  "]
               [:button {:on-click #(do
                                      (.removeItem (.-localStorage js/window) n))} "X"]]])))])
+
+(defn add-new-cell! []
+  (do
+    (swap! cells #(into [] (concat % [{:val "" :selection nil :result nil :expression-list '() :show-code true}])))
+    (save-notebook! @current-notebook)))
+
+(defn create-cell [val selection cell-id]
+  [:div {:class "flex-container"}
+   [:img {:on-click #(do (swap! cells (fn [x] (update-in x [cell-id :show-code] not)))
+                         (save-notebook! @current-notebook))
+          :src (if (get-in @cells [cell-id :show-code] false) "assets/favicon.svg" "assets/eye_crossed.svg")
+          :style {:width "40px" :height "20px"}}]
+   [:div
+    [:div {:class "outer"
+           :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
+     [:div {:class "top"
+            :style {:opacity 0}}
+      [atom-input val selection cell-id]]
+     (into [] (concat formatted-input (ruru/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
+    [:div {:style style/cell-output-style}
+     [:div {:class "grid-container"}
+      [:div (show-result (get-in @cells [cell-id :result]))]
+      [:div {:style {:text-align "right"}}
+       (str (get-in @cells [cell-id :execution] "") "ms")]]]]])
 
 (defn create-new-notebook-dialog []
   [:span [:button
@@ -262,9 +277,13 @@
 (defn notebook-page []
   (fn [] [:span.main
           {:on-load #(let [saved-notebooks (get-saved-notebooks)]
-                       (do (load-notebook (first saved-notebooks))
-                           (reset! current-notebook (first saved-notebooks))
-                           (select-cell! 0)))
+                       (if @loading-done
+                         nil
+                         (do (println "Loading...")
+                             (load-notebook (first saved-notebooks))
+                             (reset! current-notebook (first saved-notebooks))
+                             (select-cell! 0)
+                             (swap! loading-done not))))
           ;;  :on-key-down (fn [e]
           ;;                 (if (and (.-ctrlKey e) (= "s" (.-key e)))
           ;;                   (do
@@ -277,12 +296,16 @@
           [:div
            [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
            [:div {:style {:margin-top "-100px" :margin-left "150px" :margin-bottom "50px"}}
-            (into [] (concat [:select {:value @current-notebook
-                                       :on-change #(do 
+            (into [] (concat [:select {
+                                       :value @current-notebook
+                                       :on-change #(do
+                                                     (println (str "Current notebook " @current-notebook))
+                                                     (println (str "Selecting " (-> % .-target .-value)))
                                                      (save-notebook! @current-notebook)
-                                                     (println (-> % .-target .-value))
                                                      (reset! current-notebook (-> % .-target .-value))
-                                                     (load-notebook @current-notebook))}]
+                                                     (load-notebook @current-notebook)
+                                                     (select-cell! 0)
+                                                     (println (str "Current notebook " @current-notebook)))}]
                              (for [name (get-saved-notebooks)] [:option name])))
             [:button
              {:on-click #(do (save-notebook! @current-notebook))}
@@ -291,6 +314,12 @@
            [:div {:style {:margin-top "-40px" :margin-left "150px" :margin-bottom "50px"}}
             (create-new-notebook-dialog)]]
           [:br]
+          [:button {:on-click #(do (swap! cells show-all-code)
+                                   (save-notebook! @current-notebook))}
+           "Show all cells"]
+          [:button {:on-click #(do (swap! cells hide-all-code)
+                                   (save-notebook! @current-notebook))}
+           "Hide all cells"]
           [:br]
           [:br]
           [:div {:style {:padding-left "20px" "maxWidth" "700px"}}
