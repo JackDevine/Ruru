@@ -7,7 +7,7 @@ table, td, th {
 }
 table {
   border-collapse: collapse;
-  max-width: 10%;
+  /* max-width: 10%; */
   max-height: 15em;
   overflow-x: scroll;
   overflow-y: scroll;

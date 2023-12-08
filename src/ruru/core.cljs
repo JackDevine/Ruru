@@ -100,24 +100,29 @@
         cols (partition-all (/ (reduce * dims) (second dims)) value)]
     [:div {:style {:outline "2px solid grey"
                    "max-height" "15em"
-                   "max-width" "600px"
-                   "overflow-x" "scroll" "overflow-y" "scroll" "white-space" "nowrap"}}
+                   "overflow-x" "scroll"
+                   "overflow-y" "scroll"
+                   "white-space" "nowrap"}}
      [:span (str (apply str (interpose "×" dims)) " array\n")]
-     (into [] (concat [:table {:style {:border "0px solid black"}}] (map #(cols->row-hiccup cols %) (range (first dims)))))]))
+     (into [] (concat [:table {:style {"table-layout" "fixed"
+                                       :width "100%"
+                                       :border "0px black"}}]
+                      (map #(cols->row-hiccup cols %) (range (first dims)))))]))
 
 (defn show-map [m & header-names]
-  [:div {:style {"max-width" "300px"}}
-   (into
-    []
-    (concat [:table {:style {:width "50%"}}]
-            [[:tr
-              [:th
-               {:style {:text-align "left" :width "10%"}}
-               (if header-names (first header-names) "Key")]
-              [:th
-               {:style {:text-align "left" :width "50%"}}
-               (if header-names (second header-names) "Value")]]
-             (for [kv (seq m)] [:tr [:td (show-result (first kv))] [:td (show-result (second kv))]])]))])
+  (into
+   []
+   (concat [:table {:style {"table-layout" "fixed" :width "100%"}}]
+           [[:tr
+             [:th
+              {:style {:text-align "left"}}
+              (if header-names (first header-names) "Key")]
+             [:th
+              {:style {:text-align "left"}}
+              (if header-names (second header-names) "Value")]]
+            (for [kv (seq m)] [:tr
+                               [:td [:div {:style {:overflow-x "scroll"}} (show-result (first kv))]]
+                               [:td [:div {:style {:overflow-x "scroll"}} (show-result (second kv))]]])])))
 
 (defn extract-list [v]
   (mapv #(if (ruru/ruru-array? %) (extract-list (% 'value)) %) v))
@@ -140,19 +145,19 @@
 (defn show-result [r]
   (cond
     (ruru/ruru-string? r) [:div
-                           {:style (assoc style/string-style :width "600px" :overflow "scroll")}
+                           {:style (assoc style/string-style :width "570px" :overflow "scroll")}
                            (second r)]
-    (ruru/ruru-array? r) (show-array r)
-    (ruru/html? r) [:div {:style {:width "600px"}} (show-html r)]
-    (map? r) (show-map r)
-    (keyword? r) [:div {:style {:width "600px" :overflow "scroll"}}
+    (ruru/ruru-array? r) [:div {:style {"max-width" "570px"}} (show-array r)]
+    (ruru/html? r) [:div {:style {:width "570px"}} (show-html r)]
+    (map? r) [:div {:style {"max-width" "570px"}} (show-map r)]
+    (keyword? r) [:div {:style {:width "570px" :overflow "scroll"}}
                   (apply str (rest (str r)))]
-    :else [:div {:style {:width "600px" :overflow "scroll"}} (str r)]))
+    :else [:div {:style {:width "570px" :overflow "scroll"}} (str r)]))
 
 (defn show-environment [env]
   (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
         defined-vars (into {} (for [k ks] [k (:value (get env k nil))]))]
-    [:div {:style style/variable-explorer-style}
+    [:div (assoc {:style style/variable-explorer-style} "width" "8000px")
      (show-map defined-vars "Variable name" "Value")]))
 
 (defonce current-notebook (atom ""))
@@ -269,6 +274,18 @@
         (load-notebook @current-notebook)
         (select-cell! (inc cell-number)))))
 
+(defn delete-cell! [cell-id]
+  (let [indexed-cell-order (map-indexed vector @cell-order)
+        matching-cells (filter #(= cell-id (second %)) indexed-cell-order)
+        [cell-number _] (first matching-cells)
+        new-cell-order (into [] (remove #{cell-id} @cell-order))
+        new-cells (dissoc @cells cell-id)]
+    (do (save-notebook!
+         @current-notebook
+         (pr-str {:cell-order new-cell-order :cells new-cells}))
+        (load-notebook @current-notebook)
+        (select-cell! cell-number))))
+
 (defn create-cell [val selection cell-id]
   [:div {:class "flex-container"}
    [:img {:on-click #(do (swap! cells (fn [x] (update-in x [cell-id :show-code] not)))
@@ -287,9 +304,14 @@
       (str "  " (get-in @cells [cell-id :execution] "") "ms")]]
     [:div {:style style/cell-output-style}
      [:div {:class "grid-container"}
-      [:div (show-result (get-in @cells [cell-id :result]))]
-      [:button {:on-click #(add-cell-below! cell-id)
-                :style {:height "30px" "font-size" "0.9em" :width "30px"}} "+"]]]]])
+      [:div {:class "flex-container"} (show-result (get-in @cells [cell-id :result]))]
+      [:div {:class "flex-container"}
+       [:button {:on-click #(add-cell-below! cell-id)
+                 :style {"font-size" "0.9em" :width "15px" :background "transparent" :border "0px black"}}
+        "+"]
+       [:button {:on-click #(delete-cell! cell-id)
+                 :style {"font-size" "0.9em" :width "15px" :background "transparent" :border "0px black"}}
+        [:img {:width "15px" :src "assets/delete.png"}]]]]]]])
 
 (defn create-new-notebook-dialog []
   [:span [:button
@@ -371,7 +393,6 @@
                                            (reagent/cursor cells [% :val])
                                            (reagent/cursor cells [% :selection]) %)
                                          @cell-order)))
-           [:button {:style {:margin-top "10px"} :on-click #(swap! cells (fn [c] (into [] (drop-last c))))} "Delete"]
            [:button {:on-click #(reset! notebook-environment ruru/default-environment)} "Reset notebook"]
            [:div {:style {:position "absolute" :top 0 :right 0}} (show-environment @notebook-environment)]]]))
 
