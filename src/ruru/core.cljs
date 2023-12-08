@@ -98,14 +98,15 @@
 (defn show-array [arr]
   (let [dims (arr 'array_dims)
         value (arr 'value)
-        cols (partition-all (/ (reduce * dims) (second dims)) value)]
+        cols (partition-all (/ (reduce * dims) (second dims)) value)
+        nested-array (not (empty? (filter #(or (ruru/ruru-array? %) (map? %)) value)))]
     [:div {:style {:outline "2px solid grey"
                    "max-height" "15em"
                    "overflow-x" "scroll"
                    "overflow-y" "scroll"
                    "white-space" "nowrap"}}
      [:span (str (apply str (interpose "×" dims)) " array\n")]
-     (into [] (concat [:table {:style {"table-layout" "fixed"
+     (into [] (concat [:table {:style {"table-layout" (if nested-array "auto" "fixed")
                                        :width (str (* 60 (second dims)) "px")
                                        :border "0px black"}}]
                       (map #(cols->row-hiccup cols %) (range (first dims)))))]))
