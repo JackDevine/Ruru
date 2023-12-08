@@ -89,10 +89,11 @@
 
 (defn cols->row-hiccup [cols row]
   (let [row-vals (map #(nth % row) cols)]
-    (into [] (concat [:tr {:style {:border "0px solid black"}}]
+    (into [] (concat [:tr {:style {:border "0px solid black"
+                                   :width "2px"}}]
                      (mapv #(into []
-                                  (concat [:td {:style {:border "0px solid black"}}]
-                                          [(show-result %)])) row-vals)))))
+                             (concat [:td]
+                                     [(show-result %)])) row-vals)))))
 
 (defn show-array [arr]
   (let [dims (arr 'array_dims)
@@ -105,7 +106,7 @@
                    "white-space" "nowrap"}}
      [:span (str (apply str (interpose "×" dims)) " array\n")]
      (into [] (concat [:table {:style {"table-layout" "fixed"
-                                       :width "100%"
+                                       :width (str (* 60 (second dims)) "px")
                                        :border "0px black"}}]
                       (map #(cols->row-hiccup cols %) (range (first dims)))))]))
 
@@ -145,19 +146,19 @@
 (defn show-result [r]
   (cond
     (ruru/ruru-string? r) [:div
-                           {:style (assoc style/string-style :width "570px" :overflow "scroll")}
+                           {:style (assoc style/string-style :width "580px" :overflow "scroll")}
                            (second r)]
-    (ruru/ruru-array? r) [:div {:style {"max-width" "570px"}} (show-array r)]
-    (ruru/html? r) [:div {:style {:width "570px"}} (show-html r)]
-    (map? r) [:div {:style {"max-width" "570px"}} (show-map r)]
-    (keyword? r) [:div {:style {:width "570px" :overflow "scroll"}}
+    (ruru/ruru-array? r) [:div {:style {"width" "580px"}} (show-array r)]
+    (ruru/html? r) [:div {:style {:width "580px"}} (show-html r)]
+    (map? r) [:div {:style {"max-width" "580px"}} (show-map r)]
+    (keyword? r) [:div {:style {:width "580px" :overflow "scroll"}}
                   (apply str (rest (str r)))]
-    :else [:div {:style {:width "570px" :overflow "scroll"}} (str r)]))
+    :else [:div {:style {:width "580px" :overflow "scroll"}} (str r)]))
 
 (defn show-environment [env]
   (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
         defined-vars (into {} (for [k ks] [k (:value (get env k nil))]))]
-    [:div (assoc {:style style/variable-explorer-style} "width" "8000px")
+    [:div (assoc {:style style/variable-explorer-style} "width" "600px")
      (show-map defined-vars "Variable name" "Value")]))
 
 (defonce current-notebook (atom ""))
@@ -305,7 +306,7 @@
     [:div {:style style/cell-output-style}
      [:div {:class "grid-container"}
       [:div {:class "flex-container"} (show-result (get-in @cells [cell-id :result]))]
-      [:div {:class "flex-container"}
+      [:div {:class "flex-container" :style {:justify-content "top"}}
        [:button {:on-click #(add-cell-below! cell-id)
                  :style {"font-size" "0.9em" :width "15px" :background "transparent" :border "0px black"}}
         "+"]
@@ -388,7 +389,7 @@
            "Hide all cells"]
           [:br]
           [:br]
-          [:div {:style {:padding-left "20px" "maxWidth" "1000px"}}
+          [:div {:style {:padding-left "100px"}}
            (into [] (concat [:div] (mapv #(create-cell
                                            (reagent/cursor cells [% :val])
                                            (reagent/cursor cells [% :selection]) %)

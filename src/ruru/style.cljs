@@ -15,4 +15,6 @@
    :autocapitalize "off"
    :spellcheck "false"})
 
+(def cell-width "580px")
+
 (def variable-explorer-style {"maxWidth" "400px" :overflow "scroll" :outline "2px solid grey"})
