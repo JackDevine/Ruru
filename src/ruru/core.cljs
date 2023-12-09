@@ -89,10 +89,9 @@
 
 (defn cols->row-hiccup [cols row]
   (let [row-vals (map #(nth % row) cols)]
-    (into [] (concat [:tr {:style {:border "0px solid black"
-                                   :width "2px"}}]
+    (into [] (concat [:tr {:style {:border "0px solid black"}}]
                      (mapv #(into []
-                             (concat [:td]
+                             (concat [:td>div {:style {:overflow-x "scroll"}}]
                                      [(show-result %)])) row-vals)))))
 
 (defn show-array [arr]
