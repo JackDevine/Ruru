@@ -296,6 +296,14 @@
              (ffirst (keys error-entry)))
            'error))
     (is (= (-> (ruru/interpret "x := (3+5 - (2*2))" ruru/default-environment) second :x :value)
-           4))))
+           4))
+    (is (= (-> (ruru/interpret "2 => w Square => w2" ruru/default-environment) second :w :value)
+           2))
+    (is (= (-> (ruru/interpret "2 => w Square => w2" ruru/default-environment) second :w2 :value)
+           4))
+    (is (= (let
+            [new-env (-> (ruru/interpret "x := 2 => w Square => w2" ruru/default-environment) second)]
+             (map #(:value (second %)) (select-keys new-env [:x :w :w2])))
+           [4 2 4]))))
 
 (run-tests ruru.ruru-lang-test)
