@@ -174,12 +174,16 @@
       (and (seq? exp) (= :lambda (first exp)))
       (ruru-number? exp)))
 
+(defn variable-id [x]
+  (let [kx (keyword x)]
+    (if (not (nil? kx)) kx x)))
+
 (declare ruru-eval)
 
 (defn ruru-set [x exp env]
   (let
    [result (first (ruru-eval (if (= 1 (count exp)) (first exp) (ruru-eval exp env)) env))]
-    [result (assoc env (keyword x) {:role :variable :value result})]))
+    [result (assoc env (variable-id x) {:role :variable :value result})]))
 
 (defn lambda? [f env]
   (cond
@@ -191,7 +195,7 @@
 (defn ruru-set-into [exp x env]
   (let [result (first (ruru-eval (if (= 1 (count exp)) (first exp) (ruru-eval exp env)) env))
         role (if (lambda? exp env) :function :variable)]
-    [result (assoc env (keyword x) {:role role :value result})]))
+    [result (assoc env (variable-id x) {:role role :value result})]))
 
 (defn add-variables-to-env [args data env]
   (cond
@@ -666,7 +670,7 @@
    [split-tokens (partition-by assignment-token? tokens)
     [assign-sym assign-exp] (cond (= 1 (count split-tokens)) [() (first split-tokens)]
                                   :else [(first split-tokens) (last split-tokens)])]
-    (cond (> (count assign-sym) 2) (list 'error (str "Cannot assign into " assign-sym))
+    (cond (> (count assign-sym) 2) [(list 'error (str "Cannot assign into " assign-sym)) assign-exp]
           :else [(first assign-sym) assign-exp])))
 
 (defn assignment+ast [[assign-sym assign-exp] env]

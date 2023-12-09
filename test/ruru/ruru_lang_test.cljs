@@ -291,8 +291,11 @@
            3))
     (is (= (-> (ruru/interpret "x := 3+5" ruru/default-environment) second :x :value)
            8))
+    (is (= (let [error-env (-> (ruru/interpret "x+y := 3+5" ruru/default-environment) second)
+                 error-entry (apply (partial dissoc error-env) (keys ruru/default-environment))]
+             (ffirst (keys error-entry)))
+           'error))
     (is (= (-> (ruru/interpret "x := (3+5 - (2*2))" ruru/default-environment) second :x :value)
-           4))
-    ))
+           4))))
 
 (run-tests ruru.ruru-lang-test)
