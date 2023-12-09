@@ -287,6 +287,12 @@
            'error))
 ;;     (is (= (-> (ruru/interpret "1:10Map sq" ruru/default-environment) first first)
 ;;            'error))
+    (is (= (-> (ruru/interpret "x:=3" ruru/default-environment) first)
+           3))
+    (is (= (-> (ruru/interpret "x := 3+5" ruru/default-environment) second :x :value)
+           8))
+    (is (= (-> (ruru/interpret "x := (3+5 - (2*2))" ruru/default-environment) second :x :value)
+           4))
     ))
 
 (run-tests ruru.ruru-lang-test)

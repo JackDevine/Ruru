@@ -383,6 +383,7 @@
     (= t "}") {:role :close-curly-brace :value t}
     (= t "'") {:role :quote :value t}
     (strand? t) {:role :strand :value t :name (keyword t)}
+    (= t ":=") {:role :assignment :value t}
 
     (token-string? t) {:role :variable :value t}
     (token-role-change? t) {:name (keyword (second t)) :value (second t) :role :variable :role-changed true}
@@ -657,6 +658,21 @@
         token-list (apply concat (interpose '("\n") exp-list))]
     (get-hiccup-exp token-list selection)))
 
+(defn assignment-token? [token]
+  (= :assignment (:role token)))
+
+(defn get-assignment [tokens]
+  (let
+   [split-tokens (partition-by assignment-token? tokens)
+    [assign-sym assign-exp] (cond (= 1 (count split-tokens)) [() (first split-tokens)]
+                                  :else [(first split-tokens) (last split-tokens)])]
+    (cond (> (count assign-sym) 2) (list 'error (str "Cannot assign into " assign-sym))
+          :else [(first assign-sym) assign-exp])))
+
+(defn assignment+ast [[assign-sym assign-exp] env]
+  (cond (empty? assign-sym) (get-ast assign-exp env)
+        :else (list :set! assign-sym (get-ast assign-exp env))))
+
 (defn interpret-tokens [t env]
   (-> t
       (run-reader-macros env)
@@ -665,7 +681,8 @@
       bind-strands
       nest-parens
       bind-quotes
-      (get-ast env)
+      get-assignment
+      (assignment+ast env)
       (ruru-eval env)))
 
 (defn interpret-recur-impl [l result env]
