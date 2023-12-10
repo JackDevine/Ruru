@@ -115,7 +115,7 @@
       (base/ruru-quote? exp) [(ruru-eval-quote exp) env]
       :else (ruru-apply (first exp) (rest exp) env))))
 
-(def delimit-tokens #{"‿" "|" "~" " " "\n" "\n\t" "\n    " "\n  " "," "[" "]" ":" ":=" "=" "=>" "+" "*" "-" "/" "(" ")" "{" "}" ";" ";=" "\"" "@" "#" "%" "!" "'"})
+(def delimit-tokens #{"‿" "|" "&" "~" " " "\n" "\n\t" "\n    " "\n  " "," "[" "]" ":" ":=" "=" "=>" "+" "*" "-" "/" "(" ")" "{" "}" ";" ";=" "\"" "@" "#" "%" "!" "'"})
 
 (defn begins-with-delimeter? [s] (some #(str/starts-with? s %1) delimit-tokens))
 

@@ -4,8 +4,6 @@
             [cljs.reader :as reader])
   (:require-macros [ruru.base.macros :refer [inline-resource]]))
 
-;; (def fs (js/require "fs"))
-
 (defn ignore-next-form-impl [tokens] (remove #(and (seq? %1) (= :#_ (first %1))) tokens))
 
 (defn html? [x] (contains? x 'html))
@@ -152,13 +150,19 @@
             (ruru-array? %) (last (% 'value))
             (ruru-string? %) (list :#_string (first (second %)))
             :else (last %))
-   (keyword "|") ruru-concat
+   (keyword ";") ruru-concat
    :string #(list :#_string (str (subs (second %1) 0 (- (count (second %1)) 1))
                                  (subs (second %2) 1)))
-   := =})
+   := =
+   :! not
+   :& #(and %1 %2)
+   :| #(or %1 %2)
+   :then (fn [pred exp] (if pred (first (exp 'value)) (second (exp 'value))))})
 
 (def variables
-  {:pi (.-PI js/Math)})
+  {:pi (.-PI js/Math)
+   :true true
+   :false false})
 
 (def built-in-environment
   (let
