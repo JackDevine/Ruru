@@ -1,178 +1,20 @@
 (ns ruru.ruru-lang
   (:require
    [clojure.string :as str]
-   [clojure.set]
    [clojure.core.match :refer [match]]
-   [cljs.reader]))
+   [cljs.reader]
+   [ruru.base.base :as base]))
 
-(defn ignore-next-form-impl [tokens] (remove #(and (seq? %1) (= :#_ (first %1))) tokens))
-
-(defn html? [x] (contains? x 'html))
-(defn ruru-symbol? [exp] (keyword? exp))
-(defn ruru-string? [exp] (and (seq? exp) (= (first exp) :#_string)))
-(defn ruru-number? [exp] (number? exp))
-(defn ruru-function? [t env]
-  (cond
-    (seq? t) (= :lambda (-> t first :value))
-    (contains? env t) (= :function (-> t env :role))
-    :else (= :function (:role t))))
-
-(defn list-fn [& args] (if (empty? args)
-                         {'array_dims [0 0] 'value []}
-                         (let [val (into [] (apply list args))]
-                           {'array_dims [(count val) 1] 'value val})))
-
-(defn ones [dims] {'array_dims dims 'value (into [] (repeat (reduce * dims) 1.0))})
-
-(defn shape-impl [arr] (get arr 'array_dims nil))
-
-(defn array-length [arr]
-  (count (arr 'value)))
-
-(defn reshape-impl [arr dims]
-  (if (= (array-length arr) (reduce * (dims 'value))) (assoc arr 'array_dims (dims 'value))
-      (list 'error (str "Reshape error, dimensions " (dims 'value) " not compatible with element count " (array-length arr)))))
-
-(defn range-impl [start end]
-  {'array_dims [(+ 1 (- end start)) 1] 'value (into [] (range start (+ 1 end)))})
-
-(defn extend-dim [arr dim]
-  (let [old-dim (arr 'array_dims)
-        dim-1-extend (inc (- (first dim) (first old-dim)))
-        arr-value (arr 'value)
-        dim-1-extended (into [] (apply interleave (repeat dim-1-extend arr-value)))
-        dim-2-extend (inc (- (second dim) (second old-dim)))
-        dim-2-extended (into [] (apply concat (repeat dim-2-extend arr-value)))]
-    {'array_dims dim 'value (if (= 1 dim-2-extend) dim-1-extended dim-2-extended)}))
-
-(defn mul-impl [x y xdims ydims]
-  (let [broadcast-dim+iter (for [dim (range (max (count ydims) (count xdims)))]
-                             (let [x-len (get xdims dim)
-                                   y-len (get ydims dim)]
-                               [(if (or (nil? x-len) (= 1 x-len)) y-len x-len)
-                                (if (or (nil? y-len) (= 1 y-len)) x-len y-len)]))
-        new-dim (mapv first broadcast-dim+iter)]
-    (if (= xdims ydims) {'array_dims new-dim
-                         'value (mapv * (x 'value) (y 'value))}
-        (mul-impl (extend-dim x new-dim) (extend-dim y new-dim) new-dim new-dim))))
-
-(defn mul [x y]
-  (let [xdims (get x 'array_dims [])
-        ydims (get y 'array_dims [])]
-    (cond (not= 0 (reduce + (map empty? [xdims ydims]))) '(error "Not implemented")
-          :else (mul-impl x y xdims ydims))))
-
-(defn ruru-array? [x] (contains? x 'array_dims))
-
-(defn ruru-index-linear [coll key]
-  (cond
-    (number? key) (get (coll 'value) (dec key))
-    (= 'error (first key)) key
-    :else (list 'error (str "Invalid key for linear indexing " (str key)))))
-
-(defn inbounds [dims ind]
-  (reduce #(and %1 %2) true (mapv >= dims ind)))
-
-(defn ruru-linear-index [dims ind]
-  (cond (not (inbounds dims ind)) (list 'error (str "Indeces " (str ind) " out of bounds for array of size " (str dims)))
-        :else (reduce + (first ind) (map * (take (dec (count dims)) dims) (map dec (rest ind))))))
-
-(defn ruru-get-index [coll key]
-  (cond
-    (and (ruru-array? coll) (number? key)) (ruru-index-linear coll key)
-    (ruru-array? coll) (ruru-index-linear coll (ruru-linear-index (coll 'array_dims) (key 'value)))
-    (ruru-string? coll) (list :#_string (apply str "\"" (get (second coll) key) "\""))
-    (seq? coll) (nth coll (dec key))
-    :else (get coll key)))
-
-(defn ruru-concat [x y]
-  (let [x (if (ruru-array? x) x {'array_dims [1 1] 'value [x]})
-        y (if (ruru-array? y) y {'array_dims [1 1] 'value [y]})
-        xdims (x 'array_dims)
-        ydims (y 'array_dims)]
-    (if (not= (take (- (count xdims) 1) xdims) (take (- (count xdims) 1) ydims))
-      (list 'error (str "Dimensions " (apply str (interpose "x" xdims))
-                        " and " (apply str (interpose "x" ydims))
-                        " cant be concatenated"))
-      {'array_dims (assoc xdims (dec (count xdims)) (+ (last xdims) (last ydims)))
-       'value (into [] (concat (x 'value) (y 'value)))})))
-
-(defn set-diff [a1 a2]
-  (let [v1 (set (a1 'value))
-        v2 (set (a2 'value))
-        d (clojure.set/difference v1 v2)
-        d (sort (into [] d))]
-    {'array_dims [1 (count d)] 'value d}))
-
-(def default-environment
-  {:html {:role :function :value (fn [x] {'html x})}
-   :set_diff {:role :function :value set-diff}
-   :extend_dim {:role :function :value extend-dim}
-   :t {:role :function
-       :value #(-> %1
-                   (assoc 'array_dims (into [] (reverse (get %1 'array_dims))))
-                   (assoc 'transpose (not (get %1 'transpose))))}
-   :mul {:role :function
-         :value mul}
-   :reshape {:role :function :value reshape-impl}
-   :ones {:role :function :value ones}
-   :upper_case {:role :function :arity 1 :value #(list :#_string (str/upper-case (second %)))}
-   :lower_case {:role :function :arity 1 :value #(list :#_string (str/lower-case (second %)))}
-   :square {:role :function :arity 1 :value #(* %1 %1)}
-   :sqrt {:role :function :arity 1 :value #(Math/sqrt %1)}
-   :sin {:role :function :arity 1 :value Math/sin}
-   :cos {:role :function :arity 1 :value Math/cos}
-   :tan {:role :function :arity 1 :value Math/tan}
-   :pi {:role :variable :value (.-PI js/Math)}
-   :+ {:role :function :arity 2 :value +}
-   :* {:role :function :arity 2 :value *}
-   :- {:role :function :arity 2 :value -}
-   :/ {:role :function :arity 2 :value /}
-   :# {:role :function :arity 1 :value #(apply hash-map (% 'value))}
-   (keyword "@") {:role :function
-                  :arity 2
-                  :value ruru-get-index}
-   (keyword ":") {:role :function
-                  :arity 2
-                  :value range-impl}
-   :reduce {:role :function :arity 2 :value (fn [coll op] (reduce op (coll 'value)))}
-   :filter {:role :function
-            :arity 2
-            :value (fn [coll pred] (if (not (fn? pred))
-                                     (list 'error (str pred " is not a function"))
-                                     (let [filtered (filterv pred (coll 'value))]
-                                       {'array_dims [(count filtered) 1] 'value filtered})))}
-   :map {:role :function :arity 2 :value (fn [v f] {'array_dims (v 'array_dims) 'value (mapv f (v 'value))})}
-   :is_even {:role :function :arity 1 :value even?}
-   :identity {:role :function :arity 1 :value identity}
-   :set! {:role :function :arity 2 :value :set!}
-   :set_into! {:role :function :arity 2 :value :set-into!}
-   :=> {:role :function :arity 2 :value :set-into!}
-   :list {:role :function :value list-fn}
-   :first {:role :function :value #(cond
-                                     (ruru-array? %) (first (% 'value))
-                                     (ruru-string? %) (list :#_string
-                                                            (apply str "\"" (first (subs (second %) 1)) "\"")) 
-                                     :else (first %))}
-   :last {:role :function :value #(cond
-                                    (ruru-array? %) (last (% 'value))
-                                    (ruru-string? %) (list :#_string (first (second %)))
-                                    :else (last %))}
-   (keyword "|") {:role :function
-                  :arity 2
-                  :value ruru-concat}
-   :string {:role :function :arity 2:value #(list :#_string (str (subs (second %1) 0 (- (count (second %1)) 1))
-                                                                 (subs (second %2) 1)))}
-   :#!reader-macro {:ignore-next-form ignore-next-form-impl}})
+(def default-environment base/default-environment)
 
 (defn assignment? [exp] (= exp :set!))
 (defn assignment-into? [exp] (contains? #{:set_into! :=>} exp))
 
 (defn self-evaluating? [exp]
-  (or (ruru-string? exp)
+  (or (base/ruru-string? exp)
       (and (seq? exp) (= 1 (count exp)))
       (and (seq? exp) (= :lambda (first exp)))
-      (ruru-number? exp)))
+      (base/ruru-number? exp)))
 
 (defn variable-id [x]
   (let [kx (keyword x)]
@@ -216,13 +58,11 @@
                 lambda-return (first (ruru-eval (first body) lambda-env))]
             [lambda-return env])))
 
-(defn ruru-quote? [exp] (and (map? exp) (= :quoted (:role exp))))
-
 (defn exp-value [exp]
-  (cond (ruru-quote? exp) exp
+  (cond (base/ruru-quote? exp) exp
         (and (map? exp) (contains? exp :name)) (exp :name)
         (map? exp) (exp :value)
-        (ruru-string? exp) exp
+        (base/ruru-string? exp) exp
         (seq? exp) (map exp-value exp)
         :else exp))
 
@@ -234,7 +74,7 @@
         ret)))
 
 (defn ruru-eval-quote [exp]
-  (cond (ruru-string? (get exp :value)) (get exp :value)
+  (cond (base/ruru-string? (get exp :value)) (get exp :value)
         (seq? exp) {'array_dims [(dec (count exp)) 1]
                     'value (mapv extract-expr (rest exp))}
         (and (map? exp) (= :variable (:role exp))) (ruru-eval-quote (exp :name))
@@ -268,13 +108,13 @@
               (map exp-value exp)
               (exp-value exp))]
     (cond
-      (and (seq? exp) (= 1 (count exp)) (ruru-function? (first exp) env)) [(first exp) env]
+      (and (seq? exp) (= 1 (count exp)) (base/ruru-function? (first exp) env)) [(first exp) env]
       (and (seq? exp) (= 1 (count exp))) (ruru-eval (first exp) env)
-      (ruru-string? exp) [exp env]
-      (ruru-symbol? exp) [(get-in env [exp :value] (list 'error (str "Undefined symbol " exp))) env]
+      (base/ruru-string? exp) [exp env]
+      (base/ruru-symbol? exp) [(get-in env [exp :value] (list 'error (str "Undefined symbol " exp))) env]
       (self-evaluating? exp) [exp env]
       (empty? exp) [exp env]
-      (ruru-quote? exp) [(ruru-eval-quote exp) env]
+      (base/ruru-quote? exp) [(ruru-eval-quote exp) env]
       :else (ruru-apply (first exp) (rest exp) env))))
 
 (def delimit-tokens #{"‿" "|" "~" " " "\n" "\n\t" "\n    " "\n  " "," "[" "]" ":" ":=" "=" "=>" "+" "*" "-" "/" "(" ")" "{" "}" ";" ";=" "\"" "@" "#" "%" "!" "'"})
@@ -412,7 +252,7 @@
 (defn add-start-end-impl [ts start n]
   (let [token (get ts n)
         token-value (:value token)
-        token-length (cond (ruru-string? token-value) (count (second token-value))
+        token-length (cond (base/ruru-string? token-value) (count (second token-value))
                            (comment? token-value) (count (second token-value))
                            (and (:role-changed token) (= :variable (:role token))) (+ (count (str token-value)) 1) 
                            :else (count (str token-value)))
@@ -442,8 +282,8 @@
         st (second tokens)
         ft (first tokens)]
     (cond
-      (every? #(ruru-function? %1 env) tokens) `(:lambda (:x) ((~st (~ft :x) (~lt :x))))
-      (ruru-function? lt env) (list lt (list st ft))
+      (every? #(base/ruru-function? %1 env) tokens) `(:lambda (:x) ((~st (~ft :x) (~lt :x))))
+      (base/ruru-function? lt env) (list lt (list st ft))
       :else (list st ft lt))))
 
 (defn depth-adder [tt bt]
@@ -467,7 +307,7 @@
     (count (take-while #(not= 0 %1) (rest paren-depth)))))
 
 (defn starts-with-monad [tokens env]
-  (match (into [] (map #(ruru-function? %1 env) (take 3 tokens)))
+  (match (into [] (map #(base/ruru-function? %1 env) (take 3 tokens)))
     [true true true] false
     [_ true true] true
     :else false))
@@ -516,7 +356,7 @@
   (let [ft (first tokens)
         st (second tokens)]
     (cond
-      (every? #(ruru-function? %1 env) tokens) `(:lambda (:x) ((~st (~ft :x))))
+      (every? #(base/ruru-function? %1 env) tokens) `(:lambda (:x) ((~st (~ft :x))))
       :else (list st ft))))
 
 (defn token->symbol [token]
@@ -589,90 +429,6 @@
                                             (bind-strands
                                              (into [] (nthrest ts (inc strand-block-count)))))))
     :else (into [] (concat [(first ts)] (bind-strands (rest ts))))))
-
-(defn highlight-selection-impl [s selection]
-  [:span (subs s 0 selection)
-   [:span {:style {:background-color "lightgrey" "borderLeft" "1px solid black"}}
-    (let [highlighted (get s selection)]
-      highlighted)]
-   [:span (subs s (+ 1 selection))]])
-
-(defn highlight-selection [unhighlighted-hiccup tokens selected-token-index selection]
-  (cond (nil? selection) unhighlighted-hiccup
-        (and (empty? tokens) (not (nil? selection))) [[:span
-                                                       {:style {:background-color "lightgrey" "borderLeft" "1px solid black"}}
-                                                       " "]]
-        (empty? tokens) []
-        (> selection ((last tokens) :end)) (into []
-                                                 (concat
-                                                  unhighlighted-hiccup
-                                                  [[:span
-                                                    {:style {:background-color "lightgrey" "borderLeft" "1px solid black"}}
-                                                    " "]]))
-        (nil? selected-token-index) unhighlighted-hiccup
-        :else (let [target-hiccup (nth unhighlighted-hiccup selected-token-index)
-                    selected-token (nth tokens selected-token-index)
-                    start (selected-token :start)
-                    s (last target-hiccup)
-                    target-hiccup (assoc-in target-hiccup [2] (highlight-selection-impl s (- selection start)))]
-                (assoc-in unhighlighted-hiccup [selected-token-index] target-hiccup))))
-
-(defn token->hiccup [t]
-  (let
-   [val (:value t)]
-    (cond
-      (= "," val) [:span {:style {:color "black"}} val]
-      (ruru-string? val) [:span {:style {:color "red"}} (second val)]
-      (= "\n" val) [:span {} " \n"]
-      (contains? #{"\n\t" "\n  " "\n    "} val) [:span
-                                                 {}
-                                                 "\n"
-                                                 [:span
-                                                  {:style {"borderLeft" "1px solid pink"}}
-                                                  (subs val 1)]]
-      (= :whitespace (:role t)) [:span {} val]
-      (= :function (:role t)) [:span {:style {:color "blue" :font-weight "bold"}} val]
-      (and (:role-changed t) (= :variable (:role t))) [:span
-                                                       (str "~" (subs (str (:name t)) 1))]
-      (= :variable (:role t)) [:span {} (subs (str (:name t)) 1)]
-      (= :number (:role t)) [:span {:style {:color "grey"}} (str val)]
-      (= :comment (:role t)) [:span
-                              {:style {:font-style "italic" :color "green"}}
-                              (second val)]
-      :else [:span {} (str val)])))
-
-(defn selection-in-token [token selection]
-  (and (<= (token :start) selection) (<= selection (token :end))))
-
-(defn find-selected-token-impl [tokens selection [lower upper]]
-  (let [lower-token (nth tokens lower)
-        upper-token (nth tokens upper)
-        center (Math/ceil (/ (+ lower upper) 2))
-        center-token (nth tokens center)]
-    (cond
-      (selection-in-token lower-token selection) lower
-      (selection-in-token center-token selection) center
-      (selection-in-token upper-token selection) upper
-      :else (cond
-              (> selection (center-token :end)) (find-selected-token-impl tokens selection [(inc center) (dec upper)])
-              (< selection (center-token :start)) (find-selected-token-impl tokens selection [(inc lower) (dec center)])
-              :else nil))))
-
-(defn find-selected-token [tokens selection [lower upper]]
-  (cond (empty? tokens) nil
-        (or (< selection 0) (> selection ((last tokens) :end))) nil
-        :else (find-selected-token-impl tokens selection [lower upper])))
-
-(defn get-hiccup-exp [exp selection]
-  (let [tokens (into [] (tokenize exp))
-        selected-token-index (find-selected-token tokens selection [0 (dec (count tokens))])
-        unhighlighted-hiccup (mapv token->hiccup tokens)]
-    (highlight-selection unhighlighted-hiccup tokens selected-token-index selection)))
-
-(defn get-hiccup [s selection]
-  (let [exp-list (if (string? s) (expression-list s) s)
-        token-list (apply concat (interpose '("\n") exp-list))]
-    (get-hiccup-exp token-list selection)))
 
 (defn assignment-token? [token]
   (= :assignment (:role token)))

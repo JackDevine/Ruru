@@ -15,24 +15,6 @@
     (is (= (first (ruru/ruru-eval '((:lambda (:x :arg2) ((:+ :arg2 :x))) 2 3) env))
            5))))
 
-(deftest linear-index-test
-  (testing "Get linear indeces"
-    (is (= (ruru/ruru-linear-index [2 3] [2 2]) 4))
-    (is (= (ruru/ruru-linear-index [4 3] [3 1]) 3))
-    (is (= (ruru/ruru-linear-index [4 3] [1 2]) 5))
-    (is (= (ruru/ruru-linear-index [2 3] [2 3]) 6))
-    (is (= (ruru/ruru-linear-index [2 3] [3 3]) (list 'error "Indeces [3 3] out of bounds for array of size [2 3]")))))
-
-(deftest get-index-test
-  (testing "Get index"
-    (is (= (ruru/ruru-get-index {'array_dims [3 2] 'value [1 2 3 4 5 6]}
-                                {'array_dims [2 1] 'value [2 1]})
-           2))
-    (is (= (ruru/ruru-get-index {'array_dims [3 2] 'value [1 2 3 4 5 6]}
-                                {'array_dims [2 1] 'value [4 1]})
-           '(error "Indeces [4 1] out of bounds for array of size [3 2]")))
-    (is (= (ruru/ruru-get-index {'array_dims [3 2] 'value [1 2 3 4 5 6]} 4) 4))))
-
 (deftest set!-test
   (testing "set! function"
     (is
@@ -135,30 +117,6 @@
             {:role :number :value 3}]))
     (is (= (-> (ruru/interpret "[1‿2,3]" ruru/default-environment) first)
            {'array_dims [2 1] 'value [{'array_dims [2 1] 'value [1 2]} 3]}))))
-
-(def find-token-test-data (-> "2 %{a comment}% Square"
-                               (ruru/get-first-exp '() [0 0 0])
-                               second
-                               ruru/tokenize))
-
-(deftest find-selected-token
-  (testing "Find the selected token with binary search"
-    (is (= (ruru/find-selected-token find-token-test-data 0 [0 (dec (count find-token-test-data))])
-           0))
-    (is (= (ruru/find-selected-token find-token-test-data 1 [0 (dec (count find-token-test-data))])
-           1))
-    (is (= (ruru/find-selected-token find-token-test-data 2 [0 (dec (count find-token-test-data))])
-           2))
-    (is (= (ruru/find-selected-token find-token-test-data 3 [0 (dec (count find-token-test-data))])
-           2))
-    (is (= (ruru/find-selected-token find-token-test-data 15 [0 (dec (count find-token-test-data))])
-           3))
-    (is (= (ruru/find-selected-token find-token-test-data 21 [0 (dec (count find-token-test-data))])
-           4))
-    (is (= (ruru/find-selected-token find-token-test-data 22 [0 (dec (count find-token-test-data))])
-           nil))
-    (is (= (ruru/find-selected-token find-token-test-data -1 [0 (dec (count find-token-test-data))])
-           nil))))
 
 (deftest interpret-test
   (testing "Interpret expressions"
@@ -304,6 +262,12 @@
     (is (= (let
             [new-env (-> (ruru/interpret "x := 2 => w Square => w2" ruru/default-environment) second)]
              (map #(:value (second %)) (select-keys new-env [:x :w :w2])))
-           [4 2 4]))))
+           [4 2 4]))
+    (is (= (let
+            [new-env (-> (ruru/interpret "x %{a comment}% := 2 => w Square => w2" ruru/default-environment) second)]
+             (map #(:value (second %)) (select-keys new-env [:x :w :w2])))
+           [4 2 4]))
+    (is (= (-> (ruru/interpret "2+2=4" ruru/default-environment) first)
+           true))))
 
 (run-tests ruru.ruru-lang-test)

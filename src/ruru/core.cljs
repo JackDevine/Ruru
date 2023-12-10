@@ -9,7 +9,9 @@
    [reitit.coercion.spec :as rss]
    [clojure.edn :as edn]
    [ruru.ruru-lang :as ruru]
-   [ruru.style :as style]))
+   [ruru.style :as style]
+   [ruru.base.base :as base]
+   [ruru.format :as format]))
 
 (defn home-page []
   [:div
@@ -98,7 +100,7 @@
   (let [dims (arr 'array_dims)
         value (arr 'value)
         cols (partition-all (/ (reduce * dims) (second dims)) value)
-        nested-array (not (empty? (filter #(or (ruru/ruru-array? %) (map? %)) value)))]
+        nested-array (not (empty? (filter #(or (base/ruru-array? %) (map? %)) value)))]
     [:div {:style {:outline "2px solid grey"
                    "max-height" "15em"
                    "overflow-x" "scroll"
@@ -126,11 +128,11 @@
                                [:td [:div {:style {:overflow-x "scroll"}} (show-result (second kv))]]])])))
 
 (defn extract-list [v]
-  (mapv #(if (ruru/ruru-array? %) (extract-list (% 'value)) %) v))
+  (mapv #(if (base/ruru-array? %) (extract-list (% 'value)) %) v))
 
 
 (defn extract-string-scalar [x]
-  (cond (ruru/ruru-string? x) (subs (second x) 1 (dec (count (second x))))
+  (cond (base/ruru-string? x) (subs (second x) 1 (dec (count (second x))))
         (map? x) (into {} (for [[k v] x] [(extract-string-scalar k) (extract-string-scalar v)]))
         :else x))
 
@@ -140,16 +142,16 @@
            :else (extract-string-scalar %)) v))
 
 (defn show-html [x]
-  (cond (ruru/ruru-array? (x 'html)) (extract-string (first (extract-list [(x 'html)])))
+  (cond (base/ruru-array? (x 'html)) (extract-string (first (extract-list [(x 'html)])))
         :else (x 'html)))
 
 (defn show-result [r]
   (cond
-    (ruru/ruru-string? r) [:div
+    (base/ruru-string? r) [:div
                            {:style (assoc style/string-style :width "580px" :overflow "scroll")}
                            (second r)]
-    (ruru/ruru-array? r) [:div {:style {"width" "580px"}} (show-array r)]
-    (ruru/html? r) [:div {:style {:width "580px"}} (show-html r)]
+    (base/ruru-array? r) [:div {:style {"width" "580px"}} (show-array r)]
+    (base/html? r) [:div {:style {:width "580px"}} (show-html r)]
     (map? r) [:div {:style {"max-width" "580px"}} (show-map r)]
     (keyword? r) [:div {:style {:width "580px" :overflow "scroll"}}
                   (apply str (rest (str r)))]
@@ -300,7 +302,7 @@
       [:div {:class "top"
              :style {:opacity 0}}
        [atom-input val selection cell-id]]
-      (into [] (concat formatted-input (ruru/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
+      (into [] (concat formatted-input (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
      [:div {:style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
       (str "  " (get-in @cells [cell-id :execution] "") "ms")]]
     [:div {:style style/cell-output-style}
