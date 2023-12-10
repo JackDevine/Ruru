@@ -1,6 +1,10 @@
 (ns ruru.base.base
   (:require [clojure.set]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [cljs.reader :as reader])
+  (:require-macros [ruru.base.macros :refer [inline-resource]]))
+
+;; (def fs (js/require "fs"))
 
 (defn ignore-next-form-impl [tokens] (remove #(and (seq? %1) (= :#_ (first %1))) tokens))
 
@@ -156,8 +160,10 @@
 (def variables
   {:pi (.-PI js/Math)})
 
-(def default-environment
+(def built-in-environment
   (let
    [function-context (into {} (for [[k v] functions] [k {:role :function :value v}]))
     variable-context (into {} (for [[k v] variables] [k {:role :variable :value v}]))]
     (merge function-context variable-context {:#!reader-macro {:ignore-next-form ignore-next-form-impl}})))
+
+(def ruru-base (inline-resource "src/ruru/base/base.ruru"))

@@ -268,6 +268,10 @@
              (map #(:value (second %)) (select-keys new-env [:x :w :w2])))
            [4 2 4]))
     (is (= (-> (ruru/interpret "2+2=4" ruru/default-environment) first)
-           true))))
+           true))
+    (is (= (-> (ruru/interpret "1:3 Sum" ruru/default-environment) first)
+           6))
+    (is (= (-> (ruru/interpret "1:3 Prod" ruru/default-environment) first)
+           6))))
 
 (run-tests ruru.ruru-lang-test)

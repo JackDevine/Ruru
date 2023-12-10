@@ -5,8 +5,6 @@
    [cljs.reader]
    [ruru.base.base :as base]))
 
-(def default-environment base/default-environment)
-
 (defn assignment? [exp] (= exp :set!))
 (defn assignment-into? [exp] (contains? #{:set_into! :=>} exp))
 
@@ -473,3 +471,6 @@
 (defn interpret [s env]
   (cond (string? s) (interpret-recur s env)
         :else (interpret-exp-list s env)))
+
+(def default-environment
+  (second (interpret base/ruru-base base/built-in-environment)))
