@@ -105,8 +105,24 @@
 
 (defn ruru-quote? [exp] (and (map? exp) (= :quoted (:role exp))))
 
+(defn ruru-reverse [exp]
+  (if (ruru-array? exp)
+    (let [dims (exp 'array_dims)
+          val (exp 'value)]
+      {'array_dims dims 'value (reverse val)})
+    (if (ruru-string? exp)
+      (let [val (second exp)]
+        (list :#_string (apply str (reverse val))))
+      (if (ruru-quote? exp)
+        (let [val (exp 'value)]
+          (list :quoted (ruru-reverse val)))
+        (if (seq? exp)
+          (reverse exp)
+          exp)))))
+
 (def functions
-  {:html (fn [x] {'html x})
+  {:reverse ruru-reverse
+   :html (fn [x] {'html x})
    :set-diff set-diff
    :extend_dim extend-dim
    :t #(-> %1
@@ -157,7 +173,8 @@
    :! not
    :& #(and %1 %2)
    :| #(or %1 %2)
-   :then (fn [pred exp] (if pred (first (exp 'value)) (second (exp 'value))))})
+   :then (fn [pred exp] (if pred (first (exp 'value)) (second (exp 'value))))
+   :? (fn [pred exp] (if pred (first (exp 'value)) (second (exp 'value))))})
 
 (def variables
   {:pi (.-PI js/Math)

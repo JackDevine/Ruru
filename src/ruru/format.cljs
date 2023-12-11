@@ -10,18 +10,12 @@
    [:span (subs s (+ 1 selection))]])
 
 (defn highlight-selection-new-line [s selection]
-  (let [_ (println (print-str s))
-        length-s (count (last (last s)))
-        _ (println length-s)
-        _ (println (str "hallo" (last (last s)) "l"))
-        _ (println s)]
+  (let [length-s (count (last (last s)))]
     (cond (= 0 selection) [:span {:style {:background-color "lightgrey" "borderLeft" "1px solid black"}}
                            " \n" [:span {:style {:background-color "lightblue"}} (nthrest s 3)]]
-        ;;   :else s
           :else [:span "\n" (concat (repeat (- selection 1) [:span {:style {:background-color "lightblue"}} " "])
                                     [[:span {:style {:background-color "lightgrey" "borderLeft" "1px solid black"}} " "]]
-                                    (repeat (- length-s selection) [:span {:style {:background-color "lightblue"}} " "]))]
-          )))
+                                    (repeat (- length-s selection) [:span {:style {:background-color "lightblue"}} " "]))])))
 
 (defn highlight-selection [unhighlighted-hiccup tokens selected-token-index selection]
   (cond (nil? selection) unhighlighted-hiccup

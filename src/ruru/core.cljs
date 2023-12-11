@@ -127,9 +127,6 @@
                                [:td [:div {:style {:overflow-x "scroll"}} (show-result (first kv))]]
                                [:td [:div {:style {:overflow-x "scroll"}} (show-result (second kv))]]])])))
 
-(defn extract-list [v]
-  (mapv #(if (base/ruru-array? %) (extract-list (% 'value)) %) v))
-
 
 (defn extract-string-scalar [x]
   (cond (base/ruru-string? x) (subs (second x) 1 (dec (count (second x))))
@@ -142,7 +139,7 @@
            :else (extract-string-scalar %)) v))
 
 (defn show-html [x]
-  (cond (base/ruru-array? (x 'html)) (extract-string (first (extract-list [(x 'html)])))
+  (cond (base/ruru-array? (x 'html)) (extract-string (first (ruru/extract-list [(x 'html)])))
         :else (x 'html)))
 
 (defn show-result [r]

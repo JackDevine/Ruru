@@ -81,8 +81,31 @@
         (map? exp) (ruru-eval-quote (exp :value))
         :else exp))
 
+(defn ruru-eval-function? [f] (= :eval f))
+
+(defn extract-list [v]
+  (mapv #(if (base/ruru-array? %) (extract-list (% 'value)) %) v))
+
+(defn extract-quoted-list [l]
+  (mapv #(if (base/ruru-quote? %) (extract-quoted-list (% 'value)) %) l))
+
+(defn get-list-elements [l]
+  (cond (and (seq? l) (= :list (first l))) (get-list-elements (rest l))
+        (seq? l) (map get-list-elements l)
+        :else l))
+
+(defn ruru-eval-exp [exp env]
+  (cond (base/ruru-quote? exp) (let [unquoted (ruru-eval-quote exp)]
+                                 (ruru-eval-exp unquoted env))
+        (base/ruru-array? exp) (ruru-eval (extract-list [exp]) env)
+        (and (sequential? exp) (= :list (first exp))) (ruru-eval (get-list-elements exp) env)
+        (sequential? exp) [(map #(first (ruru-eval-exp % env)) exp) env]
+        :else (ruru-eval exp env)))
+
 (defn ruru-apply [f args env]
   (cond
+    (ruru-eval-function? f) (let [[res new-env] (ruru-eval-exp args env)]
+                              [(first res) new-env])
     (lambda? f env) (lambda-apply f (map #(first (ruru-eval %1 env)) args) env)
     (assignment? f) (let
                      [assignment-exp (rest args)
@@ -102,12 +125,12 @@
             [(if is-error f-value (apply f-value evaled-args)) evaled-env])))
 
 (defn ruru-eval [exp env]
-  (let [exp (if (seq? exp)
+  (let [exp (if (sequential? exp)
               (map exp-value exp)
               (exp-value exp))]
     (cond
-      (and (seq? exp) (= 1 (count exp)) (base/ruru-function? (first exp) env)) [(first exp) env]
-      (and (seq? exp) (= 1 (count exp))) (ruru-eval (first exp) env)
+      (and (sequential? exp) (= 1 (count exp)) (base/ruru-function? (first exp) env)) [(first exp) env]
+      (and (sequential? exp) (= 1 (count exp))) (ruru-eval (first exp) env)
       (base/ruru-string? exp) [exp env]
       (base/ruru-symbol? exp) [(get-in env [exp :value] (list 'error (str "Undefined symbol " exp))) env]
       (self-evaluating? exp) [exp env]
