@@ -1,12 +1,13 @@
 (ns ruru.format-test
   (:require [cljs.test :refer-macros [deftest is testing run-tests]]
             [ruru.format :as format]
-            [ruru.ruru-lang :as ruru]))
+            [ruru.ruru-lang :as ruru]
+            [ruru.parser :as parser]))
 
 (def find-token-test-data (-> "2 %{a comment}% Square"
-                              (ruru/get-first-exp '() [0 0 0])
+                              (parser/get-first-exp '() [0 0 0])
                               second
-                              ruru/tokenize))
+                              parser/tokenize))
 
 (deftest find-selected-token
   (testing "Find the selected token with binary search"

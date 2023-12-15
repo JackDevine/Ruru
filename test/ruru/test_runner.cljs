@@ -5,6 +5,7 @@
     [ruru.core-test]
     [ruru.ruru-lang-test]
     [ruru.base-base-test]
+    [ruru.parser-test]
     [figwheel.main.testing :refer [run-tests-async]]))
 
 (defn -main [& args]

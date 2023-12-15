@@ -1,6 +1,7 @@
 (ns ruru.format
   (:require [ruru.ruru-lang :as ruru]
-            [ruru.base.base :as base]))
+            [ruru.base.base :as base]
+            [ruru.parser :as parser]))
 
 (defn highlight-selection-impl [s selection]
   [:span (subs s 0 selection)
@@ -86,12 +87,12 @@
         :else (find-selected-token-impl tokens selection [lower upper])))
 
 (defn get-hiccup-exp [exp selection]
-  (let [tokens (into [] (ruru/tokenize exp))
+  (let [tokens (into [] (parser/tokenize exp))
         selected-token-index (find-selected-token tokens selection [0 (dec (count tokens))])
         unhighlighted-hiccup (mapv token->hiccup tokens)]
     (highlight-selection unhighlighted-hiccup tokens selected-token-index selection)))
 
 (defn get-hiccup [s selection]
-  (let [exp-list (if (string? s) (ruru/expression-list s) s)
+  (let [exp-list (if (string? s) (parser/expression-list s) s)
         token-list (apply concat (interpose '("\n") exp-list))]
     (get-hiccup-exp token-list selection)))

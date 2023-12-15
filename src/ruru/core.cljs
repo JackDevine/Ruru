@@ -11,12 +11,13 @@
    [ruru.ruru-lang :as ruru]
    [ruru.style :as style]
    [ruru.base.base :as base]
-   [ruru.format :as format]))
+   [ruru.format :as format]
+   [ruru.parser :as parser]))
 
 (defn home-page []
   [:div
    [:title "Welcome to ruru"]
-   ; TODO use a grid to format better
+     ; TODO use a grid to format better
    [:div [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
     [:div {:style {:font-size "2em" :margin-top "-75px" :margin-left "110px"}}
      "Welcome to ruru"]]
@@ -33,13 +34,19 @@
 
 (defonce cell-order (atom [(first (keys @cells))]))
 
+(defonce all-code-showing (atom true))
+
+(defonce presentation-mode? (atom false))
+
+(defonce presented-cell (atom (first @cell-order)))
+
 (defonce notebook-environment (atom ruru/default-environment))
 
 (defonce loading-done (atom false))
 
 (defn tokenize-cell! [cells cell-id]
   (let [cell-val (get-in @cells [cell-id :val])
-        new-expression-list (ruru/expression-list (str/replace cell-val #"\\ " "‿"))]
+        new-expression-list (parser/expression-list (str/replace cell-val #"\\ " "‿"))]
     (swap! cells #(assoc-in % [cell-id :expression-list] new-expression-list))))
 
 (defn run-cells! [cells cell-order env]
@@ -53,6 +60,22 @@
                 (do (swap! cells assoc-in [first-cell :result] cell-result)
                     (swap! cells assoc-in [first-cell :execution] time)
                     (run-cells! cells (rest cell-order) new-env)))))
+
+(defn inc-presented-cell [c]
+  (let [indexed-cells (map-indexed vector @cell-order)
+        current-presented-cell (filter #(= c (second %)) indexed-cells) 
+        current-number (ffirst current-presented-cell)]
+    (cond (= current-number (dec (count @cells))) c
+          (nil? current-number) (first @cell-order)
+          :else (nth @cell-order (inc current-number)))))
+
+(defn dec-presented-cell [c]
+  (let [indexed-cells (map-indexed vector @cell-order)
+        current-presented-cell (filter #(= c (second %)) indexed-cells)
+        current-number (ffirst current-presented-cell)]
+    (cond (= current-number 0) c
+          (nil? current-number) (first @cell-order)
+          :else (nth @cell-order (dec current-number)))))
 
 (defn atom-input [value selection cell-id]
   [:textarea {:type "text"
@@ -102,13 +125,13 @@
         cols (partition-all (/ (reduce * dims) (second dims)) value)
         nested-array (not (empty? (filter #(or (base/ruru-array? %) (map? %)) value)))]
     [:div {:style {:outline "2px solid grey"
-                   "max-height" "15em"
-                   "overflow-x" "scroll"
+                   "max-height" (if @presentation-mode? "" "15em")
+                   "overflow-x" (if @presentation-mode? "visible" "scroll")
                    "overflow-y" "scroll"
                    "white-space" "nowrap"}}
      [:span (str (apply str (interpose "×" dims)) " array\n")]
      (into [] (concat [:table {:style {"table-layout" (if nested-array "auto" "fixed")
-                                       :width (str (* 60 (second dims)) "px")
+                                       :width (if @presentation-mode? "100%" (str (* 60 (second dims)) "px"))
                                        :border "0px black"}}]
                       (map #(cols->row-hiccup cols %) (range (first dims)))))]))
 
@@ -127,32 +150,25 @@
                                [:td [:div {:style {:overflow-x "scroll"}} (show-result (first kv))]]
                                [:td [:div {:style {:overflow-x "scroll"}} (show-result (second kv))]]])])))
 
-
-(defn extract-string-scalar [x]
-  (cond (base/ruru-string? x) (subs (second x) 1 (dec (count (second x))))
-        (map? x) (into {} (for [[k v] x] [(extract-string-scalar k) (extract-string-scalar v)]))
-        :else x))
-
-(defn extract-string [v]
-  (mapv #(cond
-           (vector? %) (extract-string %)
-           :else (extract-string-scalar %)) v))
-
 (defn show-html [x]
-  (cond (base/ruru-array? (x 'html)) (extract-string (first (ruru/extract-list [(x 'html)])))
+  (cond (base/ruru-array? (x 'html)) (ruru/extract-string (first (ruru/extract-list [(x 'html)])))
         :else (x 'html)))
 
-(defn show-result [r]
-  (cond
-    (base/ruru-string? r) [:div
-                           {:style (assoc style/string-style :width "580px" :overflow "scroll")}
-                           (second r)]
-    (base/ruru-array? r) [:div {:style {"width" "580px"}} (show-array r)]
-    (base/html? r) [:div {:style {:width "580px"}} (show-html r)]
-    (map? r) [:div {:style {"max-width" "580px"}} (show-map r)]
-    (keyword? r) [:div {:style {:width "580px" :overflow "scroll"}}
-                  (apply str (rest (str r)))]
-    :else [:div {:style {:width "580px" :overflow "scroll"}} (str r)]))
+(defn show-result [r & show-width]
+  (let [show-width (if (empty? show-width) "580px" show-width)
+        overflow-style (if @presentation-mode? "visible" "scroll")]
+    (cond
+      (base/ruru-string? r) [:div
+                             {:style (assoc style/string-style :width show-width :overflow "scroll")}
+                             (second r)]
+      (base/ruru-array? r) [:div {:style (if @presentation-mode?
+                                           {:overflow overflow-style}
+                                           {"width" show-width :overflow overflow-style})} (show-array r)]
+      (base/html? r) [:div {:style {:width show-width}} (show-html r)]
+      (map? r) [:div {:style {"max-width" show-width}} (show-map r)]
+      (keyword? r) [:div {:style {:width show-width :overflow "scroll"}}
+                    (apply str (rest (str r)))]
+      :else [:div {:style {:width show-width :overflow "scroll"}} (str r)])))
 
 (defn show-environment [env]
   (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
@@ -231,7 +247,7 @@
   {:show-code (:show-code c)
    :val (:val c)
    :selection nil :result nil
-   :expression-list (ruru/expression-list (:val c))})
+   :expression-list (parser/expression-list (:val c))})
 
 (defn load-notebook [name]
   (let [notebook-data (edn/read-string (.getItem (.-localStorage js/window) name))
@@ -313,6 +329,23 @@
                  :style {"font-size" "0.9em" :width "15px" :background "transparent" :border "0px black"}}
         [:img {:width "15px" :src "assets/delete.png"}]]]]]]])
 
+(defn present-cell [val selection cell-id]
+  [:div {:class "flex-container"} 
+   [:div
+    [:div {:class "grid-container"}
+     [:div {:class "outer"
+            :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
+      [:div {:class "top"
+             :style {:opacity 0}}
+       [atom-input val selection cell-id]]
+      (into [] (concat formatted-input (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
+     [:div {:style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
+      (str "  " (get-in @cells [cell-id :execution] "") "ms")]]
+    [:div {:style style/cell-output-style}
+     [:div {:class "grid-container"}
+      [:div {:class "flex-container" :style {:overflow "auto"}}
+       (show-result (get-in @cells [cell-id :result]) "60vmax")]]]]])
+
 (defn create-new-notebook-dialog []
   [:span [:button
           {:on-click (fn [] (do (swap! display-create-new-notebook
@@ -341,6 +374,57 @@
           (create-new-notebook-dialog)
           [:div (list-saved-notebooks (get-saved-notebooks))]]))
 
+(defn render-interactive-mode []
+  [:div [:div
+         [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
+         [:div {:style {:margin-top "-100px" :margin-left "150px" :margin-bottom "50px"}}
+          (into [] (concat [:select {:value @current-notebook
+                                     :on-change #(do
+                                                   (println (str "Current notebook " @current-notebook))
+                                                   (println (str "Selecting " (-> % .-target .-value)))
+                                                   (save-notebook! @current-notebook)
+                                                   (reset! current-notebook (-> % .-target .-value))
+                                                   (load-notebook @current-notebook)
+                                                   (println (str "Current notebook " @current-notebook))
+                                                   (select-first-cell!))}]
+                           (for [name (get-saved-notebooks)] [:option name])))
+          [:button
+           {:on-click #(do (save-notebook! @current-notebook))}
+           "Save notebook"]
+          [:button {:on-click #(do (reset! presentation-mode? true)
+                                   (reset! presented-cell (first @cell-order)))}
+           "Presentation mode"]
+          [:a {:href (rfe/href ::manage_notebooks)} "Manage saved notebooks"]]
+         [:div {:style {:margin-top "-40px" :margin-left "150px" :margin-bottom "50px"}}
+          (create-new-notebook-dialog)]]
+   [:br]
+   [:button {:on-click #(do (swap! cells show-all-code)
+                            (reset! all-code-showing true)
+                            (save-notebook! @current-notebook))
+             :style {:border-color (if @all-code-showing "orange" "black")}}
+    "Show all cells"]
+   [:button {:on-click #(do (swap! cells hide-all-code)
+                            (reset! all-code-showing false)
+                            (save-notebook! @current-notebook))
+             :style {:border-color (if (not @all-code-showing) "orange" "black")}}
+    "Hide all cells"]
+   [:br]
+   [:br]
+   [:div {:style {:padding-left "100px"}}
+    (into [] (concat [:div] (mapv #(create-cell
+                                    (reagent/cursor cells [% :val])
+                                    (reagent/cursor cells [% :selection]) %)
+                                  @cell-order)))
+    [:button {:on-click #(reset! notebook-environment ruru/default-environment)} "Reset notebook"]
+    [:div {:style {:position "absolute" :top 0 :right 0}} (show-environment @notebook-environment)]]])
+
+(defn render-presentation-mode []
+  [:div
+   (do
+     (println (str "Starting presentation mode for " @current-notebook))
+     (present-cell (reagent/cursor cells [@presented-cell :val])
+                   (reagent/cursor cells [@presented-cell :selection]) @presented-cell))])
+
 (defn notebook-page []
   (fn [] [:span.main
           {:on-load #(let [saved-notebooks (get-saved-notebooks)]
@@ -350,51 +434,26 @@
                              (load-notebook (first saved-notebooks))
                              (reset! current-notebook (first saved-notebooks))
                              (swap! loading-done not)
-                             (select-first-cell!))))
-          ;;  :on-key-down (fn [e]
-          ;;                 (if (and (.-ctrlKey e) (= "s" (.-key e)))
-          ;;                   (do
-          ;;                     (.preventDefault e)
-          ;;                     (try
-          ;;                       (save-notebook! @current-notebook)
-          ;;                       (catch js/Error e (println "Save failed" e)))) nil))
-           }
+                             (select-first-cell!)
+                             (.addEventListener
+                              js/window
+                              "keydown"
+                              (fn [e]
+                                (cond
+                                  (and (.-ctrlKey e) (= "s" (.-key e))) (do
+                                                                          (.preventDefault e)
+                                                                          (try
+                                                                            (save-notebook! @current-notebook)
+                                                                            (catch js/Error e (println "Save failed" e))))
+                                  (= "Escape" (.-key e)) (reset! presentation-mode? false)
+                                  (and (.-ctrlKey e) (= "ArrowRight" (.-key e))) (swap! presented-cell inc-presented-cell)
+                                  (and (.-ctrlKey e) (= "ArrowLeft" (.-key e))) (swap! presented-cell dec-presented-cell)
+                                  :else nil))))))}
           [:title @current-notebook]
-          [:div
-           [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
-           [:div {:style {:margin-top "-100px" :margin-left "150px" :margin-bottom "50px"}}
-            (into [] (concat [:select {:value @current-notebook
-                                       :on-change #(do
-                                                     (println (str "Current notebook " @current-notebook))
-                                                     (println (str "Selecting " (-> % .-target .-value)))
-                                                     (save-notebook! @current-notebook)
-                                                     (reset! current-notebook (-> % .-target .-value))
-                                                     (load-notebook @current-notebook)
-                                                     (println (str "Current notebook " @current-notebook))
-                                                     (select-first-cell!))}]
-                             (for [name (get-saved-notebooks)] [:option name])))
-            [:button
-             {:on-click #(do (save-notebook! @current-notebook))}
-             "Save notebook"]
-            [:a {:href (rfe/href ::manage_notebooks)} "Manage saved notebooks"]]
-           [:div {:style {:margin-top "-40px" :margin-left "150px" :margin-bottom "50px"}}
-            (create-new-notebook-dialog)]]
-          [:br]
-          [:button {:on-click #(do (swap! cells show-all-code)
-                                   (save-notebook! @current-notebook))}
-           "Show all cells"]
-          [:button {:on-click #(do (swap! cells hide-all-code)
-                                   (save-notebook! @current-notebook))}
-           "Hide all cells"]
-          [:br]
-          [:br]
-          [:div {:style {:padding-left "100px"}}
-           (into [] (concat [:div] (mapv #(create-cell
-                                           (reagent/cursor cells [% :val])
-                                           (reagent/cursor cells [% :selection]) %)
-                                         @cell-order)))
-           [:button {:on-click #(reset! notebook-environment ruru/default-environment)} "Reset notebook"]
-           [:div {:style {:position "absolute" :top 0 :right 0}} (show-environment @notebook-environment)]]]))
+          (if @presentation-mode?
+            (render-presentation-mode)
+            (render-interactive-mode))
+          ]))
 
 (defn get-app-element []
   (gdom/getElement "app"))

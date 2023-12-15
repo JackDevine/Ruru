@@ -1,7 +1,6 @@
 (ns ruru.base.base
   (:require [clojure.set]
-            [clojure.string :as str]
-            [cljs.reader :as reader])
+            [clojure.string :as str])
   (:require-macros [ruru.base.macros :refer [inline-resource]]))
 
 (defn ignore-next-form-impl [tokens] (remove #(and (seq? %1) (= :#_ (first %1))) tokens))
@@ -174,7 +173,9 @@
    :& #(and %1 %2)
    :| #(or %1 %2)
    :then (fn [pred exp] (if pred (first (exp 'value)) (second (exp 'value))))
-   :? (fn [pred exp] (if pred (first (exp 'value)) (second (exp 'value))))})
+   :? (fn [pred exp] (if pred (first (exp 'value)) (second (exp 'value))))
+   :if (fn [pred consequent alternative]
+         (if pred consequent alternative))})
 
 (def variables
   {:pi (.-PI js/Math)
