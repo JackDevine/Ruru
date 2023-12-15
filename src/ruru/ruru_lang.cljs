@@ -215,6 +215,7 @@
    :eval (fn [tokens env] (first (ruru-eval
                                   (first (extract-string (extract-list [tokens])))
                                   env)))
+   ; TODO Make the result of Repr valid Ruru code (not edn)
    :repr (fn [x] (with-out-str (pp/pprint (first (extract-string (extract-list [x]))))))})
 
 (def default-environment
