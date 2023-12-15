@@ -1,7 +1,8 @@
 (ns ruru.ruru-lang
   (:require
    [ruru.base.base :as base]
-   [ruru.parser :as parser]))
+   [ruru.parser :as parser]
+   [clojure.pprint :as pp]))
 
 (defn assignment? [exp] (= exp :set!))
 (defn assignment-into? [exp] (contains? #{:set_into! :=>} exp))
@@ -213,7 +214,8 @@
    :extract_expr (fn [tokens] (list->ruru-array (extract-expr (first (extract-string (extract-list [tokens]))))))
    :eval (fn [tokens env] (first (ruru-eval
                                   (first (extract-string (extract-list [tokens])))
-                                  env)))})
+                                  env)))
+   :repr (fn [x] (with-out-str (pp/pprint (first (extract-string (extract-list [x]))))))})
 
 (def default-environment
   (merge (into {} (for [[k v] evaluation-functions] [k {:role :function :value v}]))
