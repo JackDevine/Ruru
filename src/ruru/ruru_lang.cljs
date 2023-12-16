@@ -80,8 +80,6 @@
         (map? exp) (ruru-unquote-quote (exp :value))
         :else exp))
 
-(defn ruru-eval-function? [f] (= :eval f))
-
 (defn extract-list [v]
   (mapv #(cond
            (base/ruru-comment? v) v

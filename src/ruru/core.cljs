@@ -158,8 +158,7 @@
 (defn show-result [r & show-width]
   (let [show-width (if (empty? show-width) "580px" show-width)
         overflow-style (if @presentation-mode? "wrap" "scroll")
-        html-font-family (if @presentation-mode? "Arial" "monospace")
-        font-size (if @presentation-mode? "1.5em" "1em")]
+        html-font-family (if @presentation-mode? "Arial" "monospace")]
     (cond
       (base/ruru-string? r) [:div
                              {:style (assoc style/string-style
@@ -171,9 +170,7 @@
                                             :width "auto"}
                                            {"width" show-width
                                             :overflow overflow-style})} (show-array r)]
-      (base/html? r) [:div {:style {:width show-width
-                                    :overflow-wrap "break-word"
-                                    :font-family html-font-family}} (show-html r)]
+      (base/html? r) [:div {:style {:white-space "normal" :font-family html-font-family}} (show-html r)]
       (map? r) [:div {:style {"max-width" show-width}} (show-map r)]
       (keyword? r) [:div {:style {:width (if @presentation-mode? "auto" show-width)
                                   :overflow "scroll"}}
@@ -341,23 +338,23 @@
         [:img {:width "15px" :src "assets/delete.png"}]]]]]]])
 
 (defn present-cell [val selection cell-id]
-  [:div {:class "flex-container" :style {:padding-left "50px"}}
-   [:div
-    [:div {:class "grid-container"}
-     [:div {:class "outer"
-            :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")
-                    :padding-top "50px"}}
-      [:div {:class "top"
-             :style {:opacity 0}}
-       [atom-input val selection cell-id]]
-      (into [] (concat (-> formatted-input
-                           (assoc-in [1 :style :font-size] "1.8em"))
-                       (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]]
-    [:div {:style style/cell-output-style}
-     [:div {:class "grid-container"}
-      [:div {:class "flex-container" :style {:overflow-wrap "break-word"
-                                             :font-size (if @presentation-mode? "1.8em" "1em")}}
-       (show-result (get-in @cells [cell-id :result]) "60vmax")]]]]])
+  (let [selected-cell (get-in @cells [cell-id])
+        cell-is-showing (selected-cell :show-code)]
+    [:div {:class "flex-container" :style {:padding-left "50px"}}
+     [:div
+      [:div {:class "grid-container"}
+       [:div {:class "outer"
+              :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")
+                      :padding-top "50px"}}
+        [:div {:class "top"
+               :style {:opacity 0}}
+         [atom-input val selection cell-id]]
+        (into [] (concat (-> formatted-input
+                             (assoc-in [1 :style :font-size] "1.8em"))
+                         (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]]
+      [:div {:style (assoc style/cell-output-style
+                           :font-size "1.8em")}
+       (show-result (get-in @cells [cell-id :result]) "60vmax")]]]))
 
 (defn create-new-notebook-dialog []
   [:span [:button
