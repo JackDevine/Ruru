@@ -270,9 +270,9 @@
                              {:role :number, :value 2, :start 0, :end 0}
                              {:role :number, :value 3, :start 2, :end 2}]}
                     {:role :number, :value 4, :start 4, :end 4}]}))
-    (is (= (-> (ruru/interpret
-                "\"1:10Filter is_even Reduce~+\"Expression_list Tokenize Remove_whitespace Bind_strands Nest_parens Get_ast Eval environment"
-                ruru/default-environment) first)
+    (is (= (-> "\"1:10Filter is_even Reduce~+\"Expression_list Tokenize Remove_whitespace Bind_strands Nest_parens Get_ast Eval environment"
+               (ruru/interpret ruru/default-environment)
+               first)
            30))))
 
 (run-tests ruru.ruru-lang-test)
