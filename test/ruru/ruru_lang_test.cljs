@@ -15,153 +15,16 @@
     (is (= (first (ruru/ruru-eval '((:lambda (:x :arg2) ((:+ :arg2 :x))) 2 3) env))
            5))))
 
-(deftest linear-index-test
-  (testing "Get linear indeces"
-    (is (= (ruru/ruru-linear-index [2 3] [2 2]) 4))
-    (is (= (ruru/ruru-linear-index [4 3] [3 1]) 3))
-    (is (= (ruru/ruru-linear-index [4 3] [1 2]) 5))
-    (is (= (ruru/ruru-linear-index [2 3] [2 3]) 6))
-    (is (= (ruru/ruru-linear-index [2 3] [3 3]) (list 'error "Indeces [3 3] out of bounds for array of size [2 3]")))))
-
-(deftest get-index-test
-  (testing "Get index"
-    (is (= (ruru/ruru-get-index {'array_dims [3 2] 'value [1 2 3 4 5 6]}
-                                {'array_dims [2 1] 'value [2 1]})
-           2))
-    (is (= (ruru/ruru-get-index {'array_dims [3 2] 'value [1 2 3 4 5 6]}
-                                {'array_dims [2 1] 'value [4 1]})
-           '(error "Indeces [4 1] out of bounds for array of size [3 2]")))
-    (is (= (ruru/ruru-get-index {'array_dims [3 2] 'value [1 2 3 4 5 6]} 4) 4))))
-
 (deftest set!-test
   (testing "set! function"
     (is
      (= 5
         (:value ((second (ruru/ruru-eval '(:set! :y (:+ 2 3)) env)) :y))))))
 
-(deftest get-tokens-test
-  (testing "Tokenize test"
-    (is (=
-         (ruru/get-tokens " [3,4]")
-         '(" " "[" "3" "," "4" "]")))
-    (is (=
-         (ruru/get-tokens "x=1+2")
-         '("x" "=" "1" "+" "2")))
-    (is (=
-         (ruru/get-tokens " 1  +  2 ")
-         '(" " "1" " " " " "+" " " " " "2" " ")))
-    (is (=
-         (ruru/get-tokens "x:=1+2")
-         '("x" ":=" "1" "+" "2")))
-    (is (= (ruru/get-tokens "2+%{a comment}%3%a line comment\n")
-           '("2" "+" (:#_ "%{a comment}%") "3" (:#_ "%a line comment") "\n")))
-    (is (= (-> "2+2%{a comment}%"
-               ruru/get-tokens
-               (ruru/run-reader-macros env))
-           '("2" "+" "2")))
-    (is (= (-> "2+\n\t2"
-               ruru/get-tokens
-               (ruru/run-reader-macros env))
-           '("2" "+" "\n\t" "2")))
-    (is (= (-> "2+\n    2"
-               ruru/get-tokens
-               (ruru/run-reader-macros env))
-           '("2" "+" "\n    " "2")))
-    (is (= (-> "2+\n  2"
-               ruru/get-tokens
-               (ruru/run-reader-macros env))
-           '("2" "+" "\n  " "2")))))
-
-(deftest token-value-test
-  (testing "Whitespace id"
-    (is (= :whitespace (:role (ruru/token-value " "))))
-    (is (= :whitespace (:role (ruru/token-value "\n"))))
-    (is (= :whitespace (:role (ruru/token-value "\n\t"))))
-    (is (= :whitespace (:role (ruru/token-value "\n    "))))
-    (is (= :whitespace (:role (ruru/token-value "\n  "))))))
-
-(deftest get-first-exp-test
-  (testing "Get first expression"
-    (is (= (second (ruru/get-first-exp "2+2" '() [0 0 0])) '("2" "+" "2")))
-    (is (= (second (ruru/get-first-exp "2+2\n\t3+4" '() [0 0 0])) '("2" "+" "2" "\n\t" "3" "+" "4")))
-    (is (= (second (ruru/get-first-exp "2+(2\n3+4)+2\n4-5" '() [0 0 0]))
-           '("2" "+" "(" "2" "\n" "3" "+" "4" ")" "+" "2")))
-    (is (= (second (ruru/get-first-exp "2+2+[3 4\n5 6]" '() [0 0 0]))
-           '("2" "+" "2" "+" "[" "3" " " "4" "\n" "5" " " "6" "]")))
-    (is (= (second (ruru/get-first-exp "2{x+y\nx*y}4" '() [0 0 0]))
-           '("2" "{" "x" "+" "y" "\n" "x" "*" "y" "}" "4")))
-    (is (= (second (ruru/get-first-exp "2+%{a multi\nline\ncomment}%4" '() [0 0 0]))
-           '("2" "+" (:#_ "%{a multi\nline\ncomment}%") "4")))
-    (is (= (second (ruru/get-first-exp "['span,\"hallo\"]" '() [0 0 0]))
-           '("[" "'" "span" "," (:#_string "\"hallo\"") "]")))))
-
-(deftest first-delimeter-test
-  (testing "First delimeter test"
-    (is (= (ruru/first-delimeter ":=3")
-           ":="))
-    (is (= (ruru/first-delimeter " [")
-           " "))))
-(deftest balancing-paren-test
-  (testing "Paren balancing"
-    (is (= 8
-           (-> "(3*(4-5))"
-               ruru/get-tokens
-               (ruru/tokenize)
-               ruru/balancing-paren)))
-    (is (= 10
-           (-> "(3*(4-5)+2)"
-               ruru/get-tokens
-               (ruru/tokenize)
-               ruru/balancing-paren)))
-    (is (= 4
-           (ruru/balancing-paren (ruru/tokenize (ruru/get-tokens "(2+3)+2")))))
-    (is (= 4
-           (-> "(3 Square)"
-               ruru/get-tokens
-               (ruru/tokenize)
-               ruru/balancing-paren)))))
-
-(deftest strand-test
-  (testing "Strand operator"
-    (is (= (ruru/bind-strands [{:role :number :value 1}
-                              {:role :strand :value "‿"}
-                              {:role :number :value 2}
-                              {:role :function :value :+}
-                              {:role :number :value 3}])
-           [[{:role :list :value :list}
-             {:role :number :value 1}
-             {:role :number :value 2}]
-            {:role :function :value :+}
-            {:role :number :value 3}]))
-    (is (= (-> (ruru/interpret "[1‿2,3]" ruru/default-environment) first)
-           {'array_dims [2 1] 'value [{'array_dims [2 1] 'value [1 2]} 3]}))))
-
-(def find-token-test-data (-> "2 %{a comment}% Square"
-                               (ruru/get-first-exp '() [0 0 0])
-                               second
-                               ruru/tokenize))
-
-(deftest find-selected-token
-  (testing "Find the selected token with binary search"
-    (is (= (ruru/find-selected-token find-token-test-data 0 [0 (dec (count find-token-test-data))])
-           0))
-    (is (= (ruru/find-selected-token find-token-test-data 1 [0 (dec (count find-token-test-data))])
-           1))
-    (is (= (ruru/find-selected-token find-token-test-data 2 [0 (dec (count find-token-test-data))])
-           2))
-    (is (= (ruru/find-selected-token find-token-test-data 3 [0 (dec (count find-token-test-data))])
-           2))
-    (is (= (ruru/find-selected-token find-token-test-data 15 [0 (dec (count find-token-test-data))])
-           3))
-    (is (= (ruru/find-selected-token find-token-test-data 21 [0 (dec (count find-token-test-data))])
-           4))
-    (is (= (ruru/find-selected-token find-token-test-data 22 [0 (dec (count find-token-test-data))])
-           nil))
-    (is (= (ruru/find-selected-token find-token-test-data -1 [0 (dec (count find-token-test-data))])
-           nil))))
-
 (deftest interpret-test
   (testing "Interpret expressions"
+    (is (= (-> (ruru/interpret "[1‿2,3]" ruru/default-environment) first)
+           {'array_dims [2 1] 'value [{'array_dims [2 1] 'value [1 2]} 3]}))
     (is (= (first (ruru/interpret "2+2" env))
            4))
     (is (= (first (ruru/interpret "2 Square" env))
@@ -186,9 +49,9 @@
            -2))
     (is (= (first (ruru/interpret "[1,2,3]" env))
            {'array_dims [3 1] 'value [1 2 3]}))
-    (is (= (first (ruru/interpret "[1,2,3] => arr\narr|[4,5,6]" env))
+    (is (= (first (ruru/interpret "[1,2,3] => arr\narr;[4,5,6]" env))
            {'array_dims [3 2] 'value [1 2 3 4 5 6]}))
-    (is (= (first (ruru/interpret "[1,2,3] => arr\narr|[4,5,6]First" env))
+    (is (= (first (ruru/interpret "[1,2,3] => arr\narr;[4,5,6]First" env))
            1))
     (is (= (first (ruru/interpret "[1,[2,4],3]" env))
            {'array_dims [3 1] 'value [1 {'array_dims [2 1] 'value [2 4]} 3]}))
@@ -287,6 +150,129 @@
            'error))
 ;;     (is (= (-> (ruru/interpret "1:10Map sq" ruru/default-environment) first first)
 ;;            'error))
+    (is (= (-> (ruru/interpret "x:=3" ruru/default-environment) first)
+           3))
+    (is (= (-> (ruru/interpret "x := 3+5" ruru/default-environment) second :x :value)
+           8))
+    (is (= (let [error-env (-> (ruru/interpret "x+y := 3+5" ruru/default-environment) second)
+                 error-entry (apply (partial dissoc error-env) (keys ruru/default-environment))]
+             (ffirst (keys error-entry)))
+           'error))
+    (is (= (-> (ruru/interpret "x := (3+5 - (2*2))" ruru/default-environment) second :x :value)
+           4))
+    (is (= (-> (ruru/interpret "2 => w Square => w2" ruru/default-environment) second :w :value)
+           2))
+    (is (= (-> (ruru/interpret "2 => w Square => w2" ruru/default-environment) second :w2 :value)
+           4))
+    (is (= (let
+            [new-env (-> (ruru/interpret "x := 2 => w Square => w2" ruru/default-environment) second)]
+             (map #(:value (second %)) (select-keys new-env [:x :w :w2])))
+           [4 2 4]))
+    (is (= (let
+            [new-env (-> (ruru/interpret "x %{a comment}% := 2 => w Square => w2" ruru/default-environment) second)]
+             (map #(:value (second %)) (select-keys new-env [:x :w :w2])))
+           [4 2 4]))
+    (is (= (-> (ruru/interpret "2+2=4" ruru/default-environment) first)
+           true))
+    (is (= (-> (ruru/interpret "1:3 Sum" ruru/default-environment) first)
+           6))
+    (is (= (-> (ruru/interpret "1:3 Prod" ruru/default-environment) first)
+           6))
+    (is (= (-> (ruru/interpret "1:3 Reverse" ruru/default-environment) first)
+           {'array_dims [3 1] 'value [3 2 1]}))
+    (is (= (-> (ruru/interpret "2:5 Reverse" ruru/default-environment) first)
+           {'array_dims [4 1] 'value [5 4 3 2]}))
+    (is (= (-> (ruru/interpret "1005:1010 Reverse" ruru/default-environment) first)
+           {'array_dims [6 1] 'value [1010 1009 1008 1007 1006 1005]}))
+    (is (= (-> (ruru/interpret "\"a string\" Reverse" ruru/default-environment) first)
+           '(:#_string "\"gnirts a\"")))
+    (is (= (-> (ruru/interpret "[+,2,2]Eval environment" ruru/default-environment) first)
+           4))
+    (is (= (-> (ruru/interpret "'[+,2,2]Eval environment" ruru/default-environment) first)
+           4))
+    (is (= (-> (ruru/interpret "[+,2,[-,3,2]]Eval environment" ruru/default-environment) first)
+           3))
+    (is (= (-> (ruru/interpret "[+,2+2,[-,3,2]]Eval environment" ruru/default-environment) first)
+           5))
+;;     (is (= (-> (ruru/interpret "'[+,2+2,[-,3,2]]Eval" ruru/default-environment) first)
+;;            5))
+    (is (= (-> (ruru/interpret "'[+,2,[-,3,2]]Eval environment" ruru/default-environment) first)
+           3))
+    (is (= (-> (ruru/interpret "'pi Eval environment" ruru/default-environment) first)
+           (.-PI js/Math)))
+;;     (is (= (-> (ruru/interpret "'(2+2) Eval environment" ruru/default-environment) first)
+;;            4))
+;;     (is (= (-> (ruru/interpret "'(2*pi) Eval" ruru/default-environment) first)
+;;            (* 2 (.-PI js/Math))))
     ))
+
+(deftest parser-evaluation-test
+  (testing "Parser and evaluation functions"
+    (is (= (-> (ruru/interpret "\"2 Square % comment\"Expression_list" ruru/default-environment) first)
+           {'array_dims [1 1]
+            'value [{'array_dims [5 1]
+                     'value ['(:#_string "\"2\"") '(:#_string "\" \"")
+                             '(:#_string "\"Square\"") '(:#_string "\" \"")
+                             '(:#_ "% comment")]}]}))
+    (is (= (-> (ruru/interpret "\"1:10Reduce~+\"Expression_list" ruru/default-environment) first)
+           {'array_dims [1 1]
+            'value [{'array_dims [5 1]
+                     'value ['(:#_string "\"1\"") '(:#_string "\":\"")
+                             '(:#_string "\"10\"") '(:#_string "\"Reduce\"")
+                             {'array_dims [2 1]
+                              'value [:#_variable '(:#_string "\"+\"")]}]}]}))
+    (is (= (-> (ruru/interpret "\"2 Square % comment\"Expression_list Run_reader_macros environment" ruru/default-environment) first)
+           {'array_dims [1 1]
+            'value [{'array_dims [4 1]
+                     'value ['(:#_string "\"2\"") '(:#_string "\" \"")
+                             '(:#_string "\"Square\"") '(:#_string "\" \"")]}]}))
+    (is (= (-> (ruru/interpret
+                "\"2 Square\"Expression_list Tokenize"
+                ruru/default-environment) first)
+           {'array_dims [3 1]
+            'value [{:role :number, :value 2, :start 0, :end 0} {:role :whitespace, :value " ", :start 1, :end 1} {:role :function, :name :square, :value "Square", :start 2, :end 7}]}))
+    (is (= (-> (ruru/interpret
+                "\"35 Square\"Expression_list Tokenize Remove_whitespace"
+                ruru/default-environment) first)
+           {'array_dims [2 1]
+            'value [{:role :number, :value 35, :start 0, :end 1}
+                    {:role :function, :name :square, :value "Square", :start 3, :end 8}]}))
+    (is (= (-> (ruru/interpret
+                "\"1‿2\"Expression_list Tokenize Remove_whitespace Bind_strands"
+                ruru/default-environment) first)
+           {'array_dims [1 1]
+            'value [{'array_dims [3 1]
+                     'value [{:role :list, :value :list}
+                             {:role :number, :value 1, :start 0, :end 0}
+                             {:role :number, :value 2, :start 2, :end 2}]}]}))
+    (is (= (-> (ruru/interpret
+                "\"1‿2\"Expression_list Tokenize Remove_whitespace Bind_strands"
+                ruru/default-environment) first)
+           {'array_dims [1 1]
+            'value [{'array_dims [3 1]
+                     'value [{:role :list, :value :list}
+                             {:role :number, :value 1, :start 0, :end 0}
+                             {:role :number, :value 2, :start 2, :end 2}]}]}))
+    (is (= (-> (ruru/interpret
+                "\"2 + (3 + 4)\"Expression_list Tokenize Remove_whitespace Bind_strands Nest_parens"
+                ruru/default-environment) first)
+           {'array_dims [3 1]
+            'value [{:role :number, :value 2, :start 0, :end 0}
+                    {:role :function, :value "+", :name :+, :start 2, :end 2}
+                    {:role :expr, :value '({:role :number, :value 3, :start 5, :end 5} {:role :function, :value "+", :name :+, :start 7, :end 7} {:role :number, :value 4, :start 9, :end 9})}]}))
+    (is (= (-> (ruru/interpret
+                "\"2+3-4\"Expression_list Tokenize Remove_whitespace Bind_strands Nest_parens Get_ast"
+                ruru/default-environment) first)
+           {'array_dims [3 1]
+            'value [{:role :function, :value "-", :name :-, :start 3, :end 3}
+                    {'array_dims [3 1]
+                     'value [{:role :function, :value "+", :name :+, :start 1, :end 1}
+                             {:role :number, :value 2, :start 0, :end 0}
+                             {:role :number, :value 3, :start 2, :end 2}]}
+                    {:role :number, :value 4, :start 4, :end 4}]}))
+    (is (= (-> "\"1:10Filter is_even Reduce~+\"Expression_list Tokenize Remove_whitespace Bind_strands Nest_parens Get_ast Eval environment"
+               (ruru/interpret ruru/default-environment)
+               first)
+           30))))
 
 (run-tests ruru.ruru-lang-test)

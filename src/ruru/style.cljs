@@ -5,8 +5,7 @@
 (def cell-output-style
   {:font-size "1.3em" :font-family "monospace"
    :padding-top "2px"
-   :padding-bottom "10px"
-   :outline "2px solid grey"})
+   :padding-bottom "10px"})
 
 (def cell-input-style
   {:background-color "white"
@@ -16,5 +15,6 @@
    :autocapitalize "off"
    :spellcheck "false"})
 
-(def variable-explorer-style {"maxWidth" "400px" :overflow "scroll" :outline "2px solid grey"})
+(def cell-width "580px")
 
+(def variable-explorer-style {"maxWidth" "400px" :overflow "scroll" :outline "2px solid grey"})

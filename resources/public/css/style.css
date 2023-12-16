@@ -3,11 +3,12 @@ body {
 }
 
 table, td, th {
-  border: 1px solid black;
+  border: 2px solid lightgrey;
+  overflow-x: scroll;
 }
 table {
   border-collapse: collapse;
-  max-width: 10%;
+  /* max-width: 10%; */
   max-height: 15em;
   overflow-x: scroll;
   overflow-y: scroll;
@@ -85,3 +86,7 @@ button {
   grid-template-columns: auto auto;
 }
 
+.flex-container {
+  display: flex;
+  flex-wrap: wrap;
+}
