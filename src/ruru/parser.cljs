@@ -107,7 +107,7 @@
 
 (defn token-string? [t] (and (seq? t) (= :#_string (first t))))
 
-(defn token-role-change? [t] (and (seq? t) (= :#_variable (first t))))
+(defn token-role-change? [t] (and (sequential? t) (= :#_variable (first t))))
 
 (defn strand? [t] (str/starts-with? t "‿"))
 

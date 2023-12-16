@@ -3,12 +3,18 @@
             [clojure.string :as str])
   (:require-macros [ruru.base.macros :refer [inline-resource]]))
 
-(defn ignore-next-form-impl [tokens] (remove #(and (seq? %1) (= :#_ (first %1))) tokens))
+(defn ignore-next-form-impl [tokens] (remove #(and (sequential? %1) (= :#_ (first %1))) tokens))
 
 (defn html? [x] (contains? x 'html))
+
 (defn ruru-symbol? [exp] (keyword? exp))
+
 (defn ruru-string? [exp] (and (seq? exp) (= (first exp) :#_string)))
+
+(defn ruru-comment? [exp] (and (sequential? exp) (= (count exp) 2) (= (first exp) :#_)))
+
 (defn ruru-number? [exp] (number? exp))
+
 (defn ruru-function? [t env]
   (cond
     (seq? t) (= :lambda (-> t first :value))
@@ -119,14 +125,19 @@
           (reverse exp)
           exp)))))
 
+(defn ruru-transpose [l]
+  (if (ruru-array? l)
+    (-> l
+        (assoc 'array_dims (into [] (reverse (get l 'array_dims))))
+        (assoc 'transpose (not (get l 'transpose))))
+    l))
+
 (def functions
   {:reverse ruru-reverse
    :html (fn [x] {'html x})
    :set-diff set-diff
    :extend_dim extend-dim
-   :t #(-> %1
-           (assoc 'array_dims (into [] (reverse (get %1 'array_dims))))
-           (assoc 'transpose (not (get %1 'transpose))))
+   :t ruru-transpose
    :mul mul
    :reshape reshape-impl
    :ones ones

@@ -116,7 +116,7 @@
   (let [row-vals (map #(nth % row) cols)]
     (into [] (concat [:tr {:style {:border "0px solid black"}}]
                      (mapv #(into []
-                             (concat [:td>div {:style {:overflow-x "scroll"}}]
+                             (concat [:td>div {:style {:overflow-x "scroll" :width "auto"}}]
                                      [(show-result %)])) row-vals)))))
 
 (defn show-array [arr]
@@ -126,10 +126,11 @@
         nested-array (not (empty? (filter #(or (base/ruru-array? %) (map? %)) value)))]
     [:div {:style {:outline "2px solid grey"
                    "max-height" (if @presentation-mode? "" "15em")
+                   "max-width" "80vmax"
                    "overflow-x" (if @presentation-mode? "visible" "scroll")
                    "overflow-y" "scroll"
                    "white-space" "nowrap"}}
-     [:span (str (apply str (interpose "×" dims)) " array\n")]
+     [:span (if (get arr 'show_dims) (str (apply str (interpose "×" dims)) " array\n") "")]
      (into [] (concat [:table {:style {"table-layout" (if nested-array "auto" "fixed")
                                        :width (if @presentation-mode? "100%" (str (* 60 (second dims)) "px"))
                                        :border "0px black"}}]
@@ -156,19 +157,29 @@
 
 (defn show-result [r & show-width]
   (let [show-width (if (empty? show-width) "580px" show-width)
-        overflow-style (if @presentation-mode? "visible" "scroll")]
+        overflow-style (if @presentation-mode? "wrap" "scroll")
+        html-font-family (if @presentation-mode? "Arial" "monospace")
+        font-size (if @presentation-mode? "1.5em" "1em")]
     (cond
       (base/ruru-string? r) [:div
-                             {:style (assoc style/string-style :width show-width :overflow "scroll")}
+                             {:style (assoc style/string-style
+                                            :width (if @presentation-mode? "auto" show-width)
+                                            :overflow "scroll")}
                              (second r)]
       (base/ruru-array? r) [:div {:style (if @presentation-mode?
-                                           {:overflow overflow-style}
-                                           {"width" show-width :overflow overflow-style})} (show-array r)]
-      (base/html? r) [:div {:style {:width show-width}} (show-html r)]
+                                           {:overflow overflow-style
+                                            :width "auto"}
+                                           {"width" show-width
+                                            :overflow overflow-style})} (show-array r)]
+      (base/html? r) [:div {:style {:width show-width
+                                    :overflow-wrap "break-word"
+                                    :font-family html-font-family}} (show-html r)]
       (map? r) [:div {:style {"max-width" show-width}} (show-map r)]
-      (keyword? r) [:div {:style {:width show-width :overflow "scroll"}}
+      (keyword? r) [:div {:style {:width (if @presentation-mode? "auto" show-width)
+                                  :overflow "scroll"}}
                     (apply str (rest (str r)))]
-      :else [:div {:style {:width show-width :overflow "scroll"}} (str r)])))
+      :else [:div {:style {:width (if @presentation-mode? "auto" show-width)
+                           :overflow "scroll"}} (str r)])))
 
 (defn show-environment [env]
   (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
@@ -330,20 +341,22 @@
         [:img {:width "15px" :src "assets/delete.png"}]]]]]]])
 
 (defn present-cell [val selection cell-id]
-  [:div {:class "flex-container"} 
+  [:div {:class "flex-container" :style {:padding-left "50px"}}
    [:div
     [:div {:class "grid-container"}
      [:div {:class "outer"
-            :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
+            :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")
+                    :padding-top "50px"}}
       [:div {:class "top"
              :style {:opacity 0}}
        [atom-input val selection cell-id]]
-      (into [] (concat formatted-input (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
-     [:div {:style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
-      (str "  " (get-in @cells [cell-id :execution] "") "ms")]]
+      (into [] (concat (-> formatted-input
+                           (assoc-in [1 :style :font-size] "1.8em"))
+                       (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]]
     [:div {:style style/cell-output-style}
      [:div {:class "grid-container"}
-      [:div {:class "flex-container" :style {:overflow "auto"}}
+      [:div {:class "flex-container" :style {:overflow-wrap "break-word"
+                                             :font-size (if @presentation-mode? "1.8em" "1em")}}
        (show-result (get-in @cells [cell-id :result]) "60vmax")]]]]])
 
 (defn create-new-notebook-dialog []

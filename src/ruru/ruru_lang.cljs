@@ -83,7 +83,11 @@
 (defn ruru-eval-function? [f] (= :eval f))
 
 (defn extract-list [v]
-  (mapv #(if (base/ruru-array? %) (extract-list (% 'value)) %) v))
+  (mapv #(cond
+           (base/ruru-comment? v) v
+           (and (sequential? v) (= :#_variable (second v))) (seq v)
+           (base/ruru-array? %) (extract-list (% 'value))
+           :else %) v))
 
 (defn get-list-elements [l]
   (cond (and (seq? l) (= :list (first l))) (get-list-elements (rest l))
@@ -97,6 +101,7 @@
 
 (defn extract-string [v]
   (mapv #(cond
+           (base/ruru-comment? v) (list :#_the v)
            (vector? %) (extract-string %)
            :else (extract-string-scalar %)) v))
 
@@ -189,7 +194,8 @@
 (defn list->ruru-array [l]
   {'array_dims [(count l) 1]
    'value (mapv
-           #(cond (sequential? %) (list->ruru-array %)
+           #(cond (base/ruru-comment? %) %
+                  (sequential? %) (list->ruru-array %)
                   (string? %) (list :#_string (str "\"" % "\""))
                   :else %)
            l)})
@@ -200,10 +206,28 @@
         exp-list (parser/expression-list s)]
     (list->ruru-array exp-list)))
 
+(defn criss-cross-impl [l direction]
+  (if (base/ruru-array? l)
+    (let [array-value (l 'value)
+          array-dims (l 'array_dims)
+          crossed-value (mapv #(criss-cross-impl % (not direction)) array-value)]
+      (assoc l
+             'show_dims false
+             'value crossed-value
+             'transpose direction
+             'array_dims (if direction array-dims (into [] (reverse array-dims)))))
+    l))
+
+(defn criss-cross [l] (criss-cross-impl l false))
+
 (def evaluation-functions
   {:get_first_exp #(parser/get-first-exp (second %) '() [0 0 0])
    :expression_list eval-expression-list
    :get_tokens parser/get-tokens
+   :run_reader_macros (fn [tokens env] (list->ruru-array
+                                        (map
+                                         #(parser/run-reader-macros % env)
+                                         (first (extract-string (extract-list [tokens]))))))
    :tokenize (fn [tokens] (list->ruru-array (parser/tokenize (ffirst (extract-string (extract-list [tokens]))))))
    :remove_whitespace (fn [tokens] (list->ruru-array (parser/remove-whitespace (first (extract-string (extract-list [tokens]))))))
    :bind_strands (fn [tokens] (list->ruru-array (parser/bind-strands (first (extract-string (extract-list [tokens]))))))
@@ -211,12 +235,17 @@
    :get_ast (fn [tokens env] (list->ruru-array (parser/get-ast
                                                 (first (extract-string (extract-list [tokens])))
                                                 env)))
-   :extract_expr (fn [tokens] (list->ruru-array (extract-expr (first (extract-string (extract-list [tokens]))))))
+   :get_value (fn [tokens] (list->ruru-array
+                            (parser/deep-map #(cond
+                                                (and (map? %) (contains? % :name)) (:name %)
+                                                (map? %) (:value %)
+                                                :else %) (first (extract-string (extract-list [tokens]))))))
    :eval (fn [tokens env] (first (ruru-eval
                                   (first (extract-string (extract-list [tokens])))
                                   env)))
    ; TODO Make the result of Repr valid Ruru code (not edn)
-   :repr (fn [x] (with-out-str (pp/pprint (first (extract-string (extract-list [x]))))))})
+   :repr (fn [x] (with-out-str (pp/pprint (first (extract-string (extract-list [x]))))))
+   :criss_cross criss-cross})
 
 (def default-environment
   (merge (into {} (for [[k v] evaluation-functions] [k {:role :function :value v}]))
