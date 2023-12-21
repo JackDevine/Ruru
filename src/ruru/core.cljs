@@ -26,7 +26,8 @@
    [:br]
    [:div "A lightweight programming environment for solving problems of any size."]
    [:ul
-    [:li [:a {:href (rfe/href ::notebook)} "Open an interactive notebook"]]]])
+    [:li [:a {:href (rfe/href ::notebook)} "Open an interactive notebook"]]
+    [:li [:a {:href (rfe/href ::spreadsheet)} "Open an interactive spreadsheet"]]]])
 
 (defn new-cell-data [] {:val "" :selection nil :result nil :expression-list '() :show-code true})
 
@@ -63,7 +64,7 @@
 
 (defn inc-presented-cell [c]
   (let [indexed-cells (map-indexed vector @cell-order)
-        current-presented-cell (filter #(= c (second %)) indexed-cells) 
+        current-presented-cell (filter #(= c (second %)) indexed-cells)
         current-number (ffirst current-presented-cell)]
     (cond (= current-number (dec (count @cells))) c
           (nil? current-number) (first @cell-order)
@@ -112,29 +113,45 @@
 
 (declare show-result)
 
-(defn cols->row-hiccup [cols row]
-  (let [row-vals (map #(nth % row) cols)]
-    (into [] (concat [:tr {:style {:border "0px solid black"}}]
-                     (mapv #(into []
-                             (concat [:td>div {:style {:overflow-x "scroll" :width "auto"}}]
-                                     [(show-result %)])) row-vals)))))
+(defn set-argument [hiccup path value]
+  (cond
+    (nil? (get-in hiccup path value)) value
+    :else (assoc-in hiccup path value)))
 
-(defn show-array [arr]
+(defn cols->row-hiccup [cols row & [selection]]
+  (let [row-vals (map #(nth % row) cols)
+        row-hiccup (into [] (concat [:tr {:style {:border "0px solid black"}}]
+                                    (mapv #(into []
+                                                 (concat [:td>div {:style {:overflow-x "scroll"
+                                                                           :width "auto"
+                                                                           :min-height "1em"}}]
+                                                         [(set-argument (show-result %) [1 :style :width] "auto")])) row-vals)))]
+    (cond
+      (empty? selection) row-hiccup
+      (= (dec (first (selection 'value))) row) (assoc-in row-hiccup
+                                                         [(inc (second (selection 'value))) 1 :style :border]
+                                                         "2px solid green")
+      :else row-hiccup)))
+
+(defn show-array [arr & [selection style-args]]
   (let [dims (arr 'array_dims)
         value (arr 'value)
         cols (partition-all (/ (reduce * dims) (second dims)) value)
-        nested-array (not (empty? (filter #(or (base/ruru-array? %) (map? %)) value)))]
-    [:div {:style {:outline "2px solid grey"
-                   "max-height" (if @presentation-mode? "" "15em")
-                   "max-width" "80vmax"
-                   "overflow-x" (if @presentation-mode? "visible" "scroll")
-                   "overflow-y" "scroll"
-                   "white-space" "nowrap"}}
-     [:span (if (get arr 'show_dims) (str (apply str (interpose "×" dims)) " array\n") "")]
-     (into [] (concat [:table {:style {"table-layout" (if nested-array "auto" "fixed")
-                                       :width (if @presentation-mode? "100%" (str (* 60 (second dims)) "px"))
-                                       :border "0px black"}}]
-                      (map #(cols->row-hiccup cols %) (range (first dims)))))]))
+        nested-array (not (empty? (filter #(or (base/ruru-array? %) (map? %)) value)))
+        table (into [] (concat [:table {:style {"table-layout" (if nested-array "auto" "fixed")
+                                                :width (if @presentation-mode? "100%" (str (* 60 (second dims)) "px"))
+                                                :border "0px black"}}]
+                               (map #(cols->row-hiccup cols % selection) (range (first dims)))))]
+    [:div {:style (merge
+                   {:outline "2px solid grey"
+                    "max-height" (if @presentation-mode? "" "15em")
+                    "max-width" "80vmax"
+                    "overflow-x" (if @presentation-mode? "visible" "scroll")
+                    "overflow-y" "scroll"
+                    "white-space" "nowrap"}
+                   style-args)}
+     [:span (if (get arr 'show_dims true) (str (apply str (interpose "×" dims)) " array\n") "")]
+     table]))
 
 (defn show-map [m & header-names]
   (into
@@ -206,7 +223,7 @@
                                        {:cell-order [id] :cells {id {:val "" :show-code true}}}))
           (get-saved-notebooks))
       (into [] (for [i (range n)]
-               (.key (.-localStorage js/window) i))))))
+                 (.key (.-localStorage js/window) i))))))
 
 (defn available-name [notebook-name]
   (let [[name extension] (str/split notebook-name #"\.")
@@ -338,23 +355,21 @@
         [:img {:width "15px" :src "assets/delete.png"}]]]]]]])
 
 (defn present-cell [val selection cell-id]
-  (let [selected-cell (get-in @cells [cell-id])
-        cell-is-showing (selected-cell :show-code)]
-    [:div {:class "flex-container" :style {:padding-left "50px"}}
-     [:div
-      [:div {:class "grid-container"}
-       [:div {:class "outer"
-              :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")
-                      :padding-top "50px"}}
-        [:div {:class "top"
-               :style {:opacity 0}}
-         [atom-input val selection cell-id]]
-        (into [] (concat (-> formatted-input
-                             (assoc-in [1 :style :font-size] "1.8em"))
-                         (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]]
-      [:div {:style (assoc style/cell-output-style
-                           :font-size "1.8em")}
-       (show-result (get-in @cells [cell-id :result]) "60vmax")]]]))
+  [:div {:class "flex-container" :style {:padding-left "50px"}}
+   [:div
+    [:div {:class "grid-container"}
+     [:div {:class "outer"
+            :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")
+                    :padding-top "50px"}}
+      [:div {:class "top"
+             :style {:opacity 0}}
+       [atom-input val selection cell-id]]
+      (into [] (concat (-> formatted-input
+                           (assoc-in [1 :style :font-size] "1.8em"))
+                       (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]]
+    [:div {:style (assoc style/cell-output-style
+                         :font-size "1.8em")}
+     (show-result (get-in @cells [cell-id :result]) "60vmax")]]])
 
 (defn create-new-notebook-dialog []
   [:span [:button
@@ -462,8 +477,83 @@
           [:title @current-notebook]
           (if @presentation-mode?
             (render-presentation-mode)
-            (render-interactive-mode))
-          ]))
+            (render-interactive-mode))]))
+
+(defonce spreadsheet-selection (atom {'array_dims [2 1] 'value [1 1]}))
+
+(defonce spreadsheet-data (atom {'array_dims [5 5] 'value (into [] (repeat 25 "")) 'show_dims false}))
+
+(defonce spreadsheet-formulas (atom {'array_dims [5 5] 'value (into [] (repeat 25 "")) 'show_dims false}))
+
+(defonce spreadsheet-input (atom ""))
+
+(defn spreadsheet [selection]
+  (show-array @spreadsheet-data selection {:outline "0px solid grey"}))
+
+(defn new-spreadsheet-selection [current-selection key-event]
+  (let [key (.-key key-event)
+        [row col] (current-selection 'value)]
+    (cond (= key "ArrowRight") (assoc-in current-selection ['value] [row (inc col)])
+          (= key "ArrowLeft") (assoc-in current-selection ['value] [row (dec col)])
+          (= key "ArrowUp") (assoc-in current-selection ['value] [(dec row) col])
+          (= key "ArrowDown") (assoc-in current-selection ['value] [(inc row) col])
+          :else current-selection)))
+
+(defn new-spreadsheet-formulas [current-formulas key-event]
+  (let [key (.-key key-event)
+        _ (println (str "Changing formulas following key " key))]
+    (if (= key "Enter")
+      (assoc-in current-formulas ['value
+                                  (dec (base/ruru-linear-index
+                                        (current-formulas 'array_dims)
+                                        (@spreadsheet-selection 'value)))]
+                @spreadsheet-input)
+      current-formulas)))
+
+(defn update-spreadsheet-data! []
+  (swap! spreadsheet-data
+         assoc-in ['value] (mapv #(first (ruru/interpret % (merge ruru/default-environment
+                                                                  {:s {:role :variable :value @spreadsheet-data}})))
+                                 (@spreadsheet-formulas 'value))))
+
+(defn spreadsheet-page []
+  (fn [] [:span.main
+          [:title "Spreadsheet"]
+          [:input {:type "text"
+                   :value (str/replace @spreadsheet-input #"\\ " "‿")
+                   :id "spreadsheet-input"
+                   :on-change #(do
+                                 (reset! spreadsheet-input
+                                         (-> %
+                                             .-target
+                                             .-value)))
+                   :on-key-down #(do
+                                   (if (= "Escape" (.-key %))
+                                     (-> js/document
+                                         (.querySelector "#select-cell-scratch")
+                                         .focus)
+                                     nil)
+                                   (swap! spreadsheet-formulas (fn [f] (new-spreadsheet-formulas f %)))
+                                   ; TODO update the environment that cells are interpreted in so that the spreadsheet doesn't need to be updated twice
+                                   (update-spreadsheet-data!)
+                                   (update-spreadsheet-data!))}]
+          [:input {:type "text"
+                   :id "select-cell-scratch"
+                   :style {:opacity 0}
+                   :on-key-down #(do
+                                   (if (= "Enter" (.-key %))
+                                     (-> js/document
+                                         (.querySelector "#spreadsheet-input")
+                                         .focus)
+                                     nil)
+                                   (swap! spreadsheet-selection (fn [s] (new-spreadsheet-selection s %)))
+                                   (reset! spreadsheet-input
+                                           (get-in
+                                            @spreadsheet-formulas
+                                            ['value (dec (base/ruru-linear-index
+                                                          (@spreadsheet-formulas 'array_dims)
+                                                          (@spreadsheet-selection 'value)))])))}]
+          [:div {:on-click #(println "spreadsheet clicked")} (spreadsheet @spreadsheet-selection)]]))
 
 (defn get-app-element []
   (gdom/getElement "app"))
@@ -496,6 +586,9 @@
    ["/notebook"
     {:name ::notebook
      :view notebook-page}]
+   ["/spreadsheet"
+    {:name ::spreadsheet
+     :view spreadsheet-page}]
    ["/manage_notebooks"
     {:name ::manage_notebooks
      :view manage-notebooks-page}]])
@@ -510,12 +603,12 @@
 
 ;; specify reload hook with ^:after-load metadata
 (defn ^:after-load on-reload []
-  (do 
+  (do
     (mount-app-element)
     (init!))
   ;; optionally touch your app-state to force rerendering depending on
   ;; your application
   ;; (swap! app-state update-in [:__figwheel_counter] inc)
-)
+  )
 
 (init!)
