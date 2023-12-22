@@ -115,6 +115,11 @@
   (cond (= (first t) (str/upper-case (first t))) :function
         :else :variable))
 
+(defn flip-role [t]
+  (cond (= t :function) :variable
+        (= t :variable) :function
+        :else t))
+
 (defn token-value [t]
   (cond
     (contains? #{" " "\n" "\n\t" "\n    " "\n  "} t) {:role :whitespace :value t}
@@ -129,7 +134,11 @@
     (= t ":=") {:role :assignment :value t}
 
     (token-string? t) {:role :variable :value t}
-    (token-role-change? t) {:name (keyword (second t)) :value (second t) :role :variable :role-changed true}
+    (token-role-change? t) (let [name (if (or (empty? (second t)) (= "" (second t))) " " (second t))]
+                             {:name (keyword name)
+                              :value (str "~" name)
+                              :role (flip-role (:role (token-value name)))
+                              :role-changed true})
     (comment? t) {:role :comment :value t}
     (contains? delimit-tokens t) {:role :function :value t :name (keyword t)}
 
@@ -169,7 +178,7 @@
         st (second tokens)
         ft (first tokens)]
     (cond
-      (every? #(base/ruru-function? %1 env) tokens) `(:lambda (:x) ((~st (~ft :x) (~lt :x))))
+      (every? #(base/ruru-function? %1 env) tokens) `(:lambda (:x) ((~lt (~st (~ft :x)))))
       (base/ruru-function? lt env) (list lt (list st ft))
       :else (list st ft lt))))
 
@@ -216,12 +225,19 @@
       (cond
         (= paren-type :open-paren)
         (conj (nest-parens tokens-outside-paren)
-              {:role :expr :value (nest-parens tokens-in-paren)})
+              {:role :expr
+               :role-changed (get (first tokens) :role-changed false)
+               :value (nest-parens tokens-in-paren)})
         (= paren-type :open-curly-brace) (conj (nest-parens tokens-outside-paren)
-                                               (concat (list {:role :function :value :lambda :name :lambda} (list {:role :argument :value :x} {:role :argument :value :y})) (list (list {:role :expr :value (nest-parens tokens-in-paren)}))))
+                                               (concat (list {:role :function
+                                                              :role-changed (get (first tokens) :role-changed false)
+                                                              :value :lambda
+                                                              :name :lambda} (list {:role :argument :value :x} {:role :argument :value :y})) (list (list {:role :expr :value (nest-parens tokens-in-paren)}))))
         (= paren-type :open-square-brace)
         (conj (nest-parens tokens-outside-paren)
-              (concat [{:role :list :value :list}] (array-expressions (nest-parens tokens-in-paren))))
+              (concat [{:role :list
+                        :role-changed (get (first tokens) :role-changed false)
+                        :value :list}] (array-expressions (nest-parens tokens-in-paren))))
         :else (str "Unknown parent type" paren-type)))
     :else (concat (list (first tokens)) (nest-parens (rest tokens)))))
 

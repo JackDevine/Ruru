@@ -17,6 +17,7 @@
 
 (defn ruru-function? [t env]
   (cond
+    ;; (:role-changed t) (not (ruru-function? (dissoc t :role-changed) env))
     (seq? t) (= :lambda (-> t first :value))
     (contains? env t) (= :function (-> t env :role))
     :else (= :function (:role t))))
@@ -132,8 +133,12 @@
         (assoc 'transpose (not (get l 'transpose))))
     l))
 
+(defn y-combinator [fs]
+  `(:lambda (:x) ((~(second (fs 'value)) (~(first (fs 'value)) :x) (~(last (fs 'value)) :x)))))
+
 (def functions
-  {:reverse ruru-reverse
+  {:y y-combinator
+   :reverse ruru-reverse
    :html (fn [x] {'html x})
    :set-diff set-diff
    :extend_dim extend-dim

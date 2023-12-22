@@ -137,10 +137,14 @@
                            [evaled-exp evaled-env] (eval-args '() assignment-exp env)
                            exp-role (if (lambda? assignment-exp env) :function :variable)]
                            (ruru-set-into (first evaled-exp) exp-role assignment-var evaled-env))
-    :else (let [f-value (get-in env [f :value] (list 'error (str "Undefined function " f)))
+    :else (let [f-value (get-in env [f :value] (first (ruru-eval f env)))
                 is-error (and (seq? f-value) (= 'error (first f-value)))
                 [evaled-args evaled-env] (eval-args '() args env)]
-            [(if is-error f-value (apply f-value evaled-args)) evaled-env])))
+            [(cond
+               is-error f-value
+               (lambda? f-value evaled-env) (first (lambda-apply f-value evaled-args evaled-env))
+               :else (apply f-value evaled-args))
+             evaled-env])))
 
 (defn ruru-eval [exp env]
   (let [exp (if (sequential? exp)

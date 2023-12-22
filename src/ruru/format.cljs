@@ -55,8 +55,7 @@
                                                   (subs val 1)]]
       (= :whitespace (:role t)) [:span {} val]
       (= :function (:role t)) [:span {:style {:color "blue" :font-weight "bold"}} val]
-      (and (:role-changed t) (= :variable (:role t))) [:span
-                                                       (str "~" (subs (str (:name t)) 1))]
+      (:role-changed t) [:span {} val]
       (= :variable (:role t)) [:span {} (subs (str (:name t)) 1)]
       (= :number (:role t)) [:span {:style {:color "grey"}} (str val)]
       (= :comment (:role t)) [:span

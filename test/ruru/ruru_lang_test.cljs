@@ -73,8 +73,12 @@
            '(:lambda (:x :y) ((:square :x)))))
     (is (= (first (ruru/interpret "{x Square} => f\n2 F" env))
            4))
-    (is (= (first (ruru/interpret "2 (Square+Square)" env))
+    (is (= (first (ruru/interpret "f:=Square‿+‿Square Y\n2 F" ruru/default-environment))
            8))
+    (is (= (first (ruru/interpret "4~(Square‿-‿Sqrt Y)" ruru/default-environment))
+           14))
+    (is (= (first (ruru/interpret "2~(Square‿+‿Square First)" ruru/default-environment))
+           4))
     (is (= (first (ruru/interpret "(3 Square)+(4 Square)" env))
            25))
     (is (= (first (ruru/interpret "(3 Square)+(4 Square) Sqrt" env))
@@ -145,7 +149,7 @@
     (is (= (-> (ruru/interpret "1:20Filter is_even Map square Reduce~+" ruru/default-environment) first)
            1540))
     (is (= (-> (ruru/interpret "2 S" ruru/default-environment) first)
-           '(error "Undefined function :s")))
+           '(error "Undefined symbol :s")))
     (is (= (-> (ruru/interpret "1:10Filter is_" ruru/default-environment) first first)
            'error))
 ;;     (is (= (-> (ruru/interpret "1:10Map sq" ruru/default-environment) first first)
@@ -259,7 +263,9 @@
            {'array_dims [3 1]
             'value [{:role :number, :value 2, :start 0, :end 0}
                     {:role :function, :value "+", :name :+, :start 2, :end 2}
-                    {:role :expr, :value '({:role :number, :value 3, :start 5, :end 5} {:role :function, :value "+", :name :+, :start 7, :end 7} {:role :number, :value 4, :start 9, :end 9})}]}))
+                    {:role :expr
+                     :role-changed false
+                     :value '({:role :number, :value 3, :start 5, :end 5} {:role :function, :value "+", :name :+, :start 7, :end 7} {:role :number, :value 4, :start 9, :end 9})}]}))
     (is (= (-> (ruru/interpret
                 "\"2+3-4\"Expression_list Tokenize Remove_whitespace Bind_strands Nest_parens Get_ast"
                 ruru/default-environment) first)
