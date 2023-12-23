@@ -178,7 +178,8 @@
         st (second tokens)
         ft (first tokens)]
     (cond
-      (every? #(base/ruru-function? %1 env) tokens) `(:lambda (:x) ((~lt (~st (~ft :x)))))
+      (every? #(base/ruru-function? %1 env) tokens) `(:lambda (:x) ((~lt (~st (~ft :x))))
+                                                              (:x :y) ((~lt (~st (~ft :x)) :y)))
       (base/ruru-function? lt env) (list lt (list st ft))
       :else (list st ft lt))))
 
@@ -232,7 +233,13 @@
                                                (concat (list {:role :function
                                                               :role-changed (get (first tokens) :role-changed false)
                                                               :value :lambda
-                                                              :name :lambda} (list {:role :argument :value :x} {:role :argument :value :y})) (list (list {:role :expr :value (nest-parens tokens-in-paren)}))))
+                                                              :name :lambda}
+                                                             '({:role :argument :value :x})
+                                                             (list {:role :expr :value (nest-parens tokens-in-paren)})
+                                                             (list
+                                                              {:role :argument :value :x}
+                                                              {:role :argument :value :y}))
+                                                       (list (list {:role :expr :value (nest-parens tokens-in-paren)}))))
         (= paren-type :open-square-brace)
         (conj (nest-parens tokens-outside-paren)
               (concat [{:role :list
@@ -259,7 +266,8 @@
   (let [ft (first tokens)
         st (second tokens)]
     (cond
-      (every? #(base/ruru-function? %1 env) tokens) `(:lambda (:x) ((~st (~ft :x))))
+      (every? #(base/ruru-function? %1 env) tokens) `(:lambda (:x) ((~st (~ft :x)))
+                                                              (:x :y) ((~st (~ft :x) :y)))
       :else (list st ft))))
 
 (defn token->symbol [token]
@@ -277,6 +285,24 @@
       (first symbols)
       symbols)))
 
+(defn one-arg-tacit-function [tokens arg]
+  (cond (empty? tokens) nil
+        (= 1 (count tokens)) (list (first tokens) arg)
+        :else (conj (list (one-arg-tacit-function (take (- (count tokens) 1) tokens) arg))
+                    (last tokens))))
+
+(defn two-arg-tacit-function [tokens args]
+  (let [[arg1 arg2] args]
+    (cond (empty? tokens) nil
+          (= 1 (count tokens)) (list (first tokens) arg1 arg2)
+          :else (let [piped-calls (one-arg-tacit-function (take (- (count tokens) 1) tokens) arg1)]
+                  (two-arg-tacit-function (list (last tokens)) (list piped-calls :y))))))
+
+(defn tacit-function [tokens]
+  (list :lambda
+        '(:x) (list (one-arg-tacit-function tokens :x))
+        '(:x :y) (list (two-arg-tacit-function tokens '(:x :y)))))
+
 (defn get-ast [tokens env]
   (if
    (empty? tokens) '()
@@ -289,9 +315,18 @@
                                             ast-head (nthrest tokens 2)]
                                         (get-ast (conj ast-head ast-leaf) env))
        (= nt 3) (get-ast-3-tokens tokens env)
-       :else (let [ast-leaf (get-ast-3-tokens (take 3 tokens) env)
-                   ast-head (nthrest tokens 3)]
-               (get-ast (conj ast-head ast-leaf) env))))))
+       :else (if (every? #(base/ruru-function? % env) (take 2 tokens))
+               (let [[function-tokens rest-tokens] (split-with #(base/ruru-function? %1 env) tokens)]
+                 (if (empty? rest-tokens)
+                   (tacit-function function-tokens)
+                   (conj (tacit-function function-tokens) (get-ast rest-tokens env))))
+               (let [ast-leaf (get-ast-3-tokens (take 3 tokens) env)
+                     ast-head (nthrest tokens 3)]
+                 (get-ast (conj ast-head ast-leaf) env)))
+      ;;  :else (let [ast-leaf (get-ast-3-tokens (take 3 tokens) env)
+      ;;              ast-head (nthrest tokens 3)]
+      ;;          (get-ast (conj ast-head ast-leaf) env))
+       ))))
 
 (defn remove-whitespace [tokens]
   (filterv #(not= :whitespace (:role %1)) tokens))

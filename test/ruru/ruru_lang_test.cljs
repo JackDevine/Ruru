@@ -12,7 +12,7 @@
       (= 5 (first (ruru/ruru-eval [:+ 2 3] env)))))
     (is (= (first (ruru/ruru-eval '((:lambda (:x) ((:square :x))) 2) env))
            4))
-    (is (= (first (ruru/ruru-eval '((:lambda (:x :arg2) ((:+ :arg2 :x))) 2 3) env))
+    (is (= (first (ruru/ruru-eval '((:lambda (:x) ("One arg passed") (:x :arg2) ((:+ :arg2 :x))) 2 3) env))
            5))))
 
 (deftest set!-test
@@ -70,7 +70,7 @@
     (is (= (first (ruru/interpret "2+2 {x Square}" env))
            16))
     (is (= (first (ruru/interpret "{x Square}" env))
-           '(:lambda (:x :y) ((:square :x)))))
+           '(:lambda (:x) ((:square :x)) (:x :y) ((:square :x)))))
     (is (= (first (ruru/interpret "{x Square} => f\n2 F" env))
            4))
     (is (= (first (ruru/interpret "f:=Square‿+‿Square Y\n2 F" ruru/default-environment))
@@ -209,6 +209,37 @@
 ;;     (is (= (-> (ruru/interpret "'(2*pi) Eval" ruru/default-environment) first)
 ;;            (* 2 (.-PI js/Math))))
     ))
+
+(deftest tacit-programming
+  (testing "Tacit programming"
+    (is (= (-> (ruru/interpret "2 (Square Square)" ruru/default-environment) first)
+           16))
+    (is (= (-> (ruru/interpret "2 Square Square" ruru/default-environment) first)
+           16))
+    (is (= (-> (ruru/interpret "4 Sqrt-Square" ruru/default-environment) first)
+           4))
+    (is (= (-> (ruru/interpret "4 (Sqrt-Square)" ruru/default-environment) first)
+           4))
+    (is (= (-> (ruru/interpret "4(Sqrt Square-)" ruru/default-environment) first)
+           -4))
+    (is (= (-> (ruru/interpret "4 Sqrt Square-" ruru/default-environment) first)
+           -4))
+    (is (= (-> (ruru/interpret "4 Sqrt Square-3" ruru/default-environment) first)
+           1))
+    (is (= (-> (ruru/interpret "4~(Sqrt Square-)3" ruru/default-environment) first)
+           1))
+    (is (= (-> (ruru/interpret "4~(Sqrt Square Sqrt Square)" ruru/default-environment) first)
+           4))
+    (is (= (-> (ruru/interpret "4~(Sqrt Square Sqrt -)3" ruru/default-environment) first)
+           -1))
+    (is (= (-> (ruru/interpret "4 Sqrt Square Sqrt Square" ruru/default-environment) first)
+           4))
+    (is (= (-> (ruru/interpret "0~(Sin Cos Square Sqrt -)3" ruru/default-environment) first)
+           -2))
+    (is (= (-> (ruru/interpret "0 (Sin Cos Square Sqrt -)3" ruru/default-environment) first)
+           -2))
+    (is (= (-> (ruru/interpret "0 Sin Cos Square Sqrt - 3" ruru/default-environment) first)
+           -2))))
 
 (deftest parser-evaluation-test
   (testing "Parser and evaluation functions"

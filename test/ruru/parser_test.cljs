@@ -99,3 +99,57 @@
              {:role :number :value 2}]
             {:role :function :value :+}
             {:role :number :value 3}]))))
+
+(deftest tacit-functions
+  (testing "Tacit function creation"
+    (is (= (parser/one-arg-tacit-function '(:f :g :h :i :j) :x)
+           '(:j (:i (:h (:g (:f :x)))))))
+    (is (= (parser/two-arg-tacit-function '(:f) '(:x :y))
+           '(:f :x :y)))
+    (is (= (parser/two-arg-tacit-function '(:f :g) '(:x :y))
+           '(:g (:f :x) :y)))
+    (is (= (parser/two-arg-tacit-function '(:f :g :h) '(:x :y))
+           '(:h (:g (:f :x)) :y)))))
+
+(deftest tacit-programming-test
+  (testing "Tacit programming"
+    (is (= (-> "Square Square"
+               parser/expression-list
+               first
+               parser/tokenize
+               parser/remove-whitespace
+               parser/get-assignment
+               (parser/assignment+ast env)
+               ruru/exp-value)
+           '(:lambda (:x) ((:square (:square :x)))
+                     (:x :y) ((:square (:square :x) :y)))))
+    (is (= (-> "Square Sqrt +"
+               parser/expression-list
+               first
+               parser/tokenize
+               parser/remove-whitespace
+               parser/get-assignment
+               (parser/assignment+ast env)
+               ruru/exp-value)
+           '(:lambda (:x) ((:+ (:sqrt (:square :x))))
+                     (:x :y) ((:+ (:sqrt (:square :x)) :y)))))
+    (is (= (-> "Square Sqrt Cos"
+               parser/expression-list
+               first
+               parser/tokenize
+               parser/remove-whitespace
+               parser/get-assignment
+               (parser/assignment+ast env)
+               ruru/exp-value)
+           '(:lambda (:x) ((:cos (:sqrt (:square :x))))
+                     (:x :y) ((:cos (:sqrt (:square :x)) :y)))))
+    (is (= (-> "Square Sqrt Cos Sin"
+               parser/expression-list
+               first
+               parser/tokenize
+               parser/remove-whitespace
+               parser/get-assignment
+               (parser/assignment+ast env)
+               ruru/exp-value)
+           '(:lambda (:x) ((:sin (:cos (:sqrt (:square :x)))))
+                     (:x :y) ((:sin (:cos (:sqrt (:square :x))) :y)))))))

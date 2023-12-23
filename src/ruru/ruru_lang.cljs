@@ -48,8 +48,9 @@
   (cond
     (empty? data) [data env]
     :else (let [lambda (cond (contains? env lambda) ((env lambda) :value) :else lambda)
-                arguments (second lambda)
-                body (nth lambda 2)
+                n-arguments (count data)
+                arguments (nth lambda (- (* 2 n-arguments) 1))
+                body (nth lambda (* 2 n-arguments))
                 lambda-env (add-variables-to-env arguments data env)
                 ; TODO evaluate more than one expression and return the result of the last expression
                 lambda-return (first (ruru-eval (first body) lambda-env))]
