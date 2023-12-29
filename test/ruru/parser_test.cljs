@@ -1,7 +1,8 @@
 (ns ruru.parser-test
   (:require [cljs.test :refer-macros [deftest is testing run-tests]]
             [ruru.parser :as parser]
-            [ruru.ruru-lang :as ruru]))
+            [ruru.ruru-lang :as ruru]
+            [ruru.base.base :as base]))
 
 (def env ruru/default-environment)
 
@@ -100,7 +101,43 @@
             {:role :function :value :+}
             {:role :number :value 3}]))))
 
-(deftest tacit-functions
+(deftest expression-list-test
+  (testing "Expression list"
+    (is (= (parser/expression-list "2+2")
+           [["2" "+" "2"]]))
+    (is (= (parser/expression-list "2+2\n3+4")
+           [["2" "+" "2"] ["3" "+" "4"]]))
+    (is (= (parser/expression-list "2+2\n3+4\n5+6")
+           [["2" "+" "2"] ["3" "+" "4"] ["5" "+" "6"]]))
+    (is (= (parser/expression-list "g:=~(Sqrt‿2‿3 First)+\n2")
+           '(("g" ":=" (:#_variable "(") "Sqrt" "‿" "2" "‿" "3" " " "First" ")" "+")
+             ("2"))))))
+
+
+(comment
+  (parser/expression-list "g:=~(Sqrt‿2‿3 First)+\n2")
+  (-> "g:=~(Sqrt‿2‿3 First)+\n2"
+      (ruru/interpret ruru/default-environment)
+      second
+      :g)
+  )
+
+(deftest role-change-test
+  (testing "Parsing expressions that have role changes"
+    (is (= (-> "4(~(Sqrt‿2‿3 First)+)"
+               parser/expression-list
+               first
+               parser/tokenize
+               parser/remove-whitespace
+               parser/bind-strands
+               parser/nest-parens
+               parser/get-assignment
+               (parser/assignment+ast env)
+               (ruru/ruru-eval env)
+               first)
+           2))))
+
+(deftest tacit-functions-test
   (testing "Tacit function creation"
     (is (= (parser/one-arg-tacit-function '(:f :g :h :i :j) :x)
            '(:j (:i (:h (:g (:f :x)))))))

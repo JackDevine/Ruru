@@ -84,7 +84,8 @@
                 [front-str rest-str])))
 
 (defn update-paren-count [paren-count-vec ft]
-  (let [v paren-count-vec]
+  (let [v paren-count-vec
+        ft (if (seq? ft) (second ft) ft)]
     (cond (= ft "(") (concat [(+ (first v) 1)] (rest v))
           (= ft ")") (concat [(- (first v) 1)] (rest v))
           (= ft "[") [(first v) (+ (second v) 1) (last v)]
@@ -256,11 +257,30 @@
 
 (declare get-ast)
 
+(defn expr-ast [tokens env]
+  (cond (and (= :expr (:role tokens))
+             (:role-changed tokens)) {:role :function
+                                      :value (get-ast (:value tokens) env)}
+        (= :expr (:role tokens)) (get-ast (:value tokens) env)
+        :else tokens))
+
 (defn unnest-exprs [tokens env]
-  (let [inner-ast (if (= :expr (:role tokens)) (get-ast (:value tokens) env) tokens)]
+  (let [inner-ast (expr-ast tokens env)
+        role (get tokens :role :variable)
+        role-changed (get tokens :role-changed false)]
     (cond
       (and (seq? inner-ast) (= 1 (count inner-ast))) (first inner-ast)
-      :else inner-ast)))
+      ;; (seq? inner-ast) {:role role :role-changed role-changed
+      ;;                   :value (map #(unnest-exprs % env) inner-ast)}
+      ;; (seq? inner-ast) {:role role :role-changed role-changed
+      ;;                   :value (map #(unnest-exprs % env) inner-ast)}
+      (map? inner-ast) (assoc inner-ast
+                              :role role
+                              :role-changed role-changed)
+      ;; :else {:role role :role-changed role-changed
+      ;;        :value (#(unnest-exprs % env) inner-ast)}
+      :else inner-ast
+      )))
 
 (defn get-ast-2-tokens [tokens env]
   (let [ft (first tokens)

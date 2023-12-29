@@ -17,7 +17,7 @@
 
 (defn ruru-function? [t env]
   (cond
-    ;; (:role-changed t) (not (ruru-function? (dissoc t :role-changed) env))
+    (= :expr (:role t)) (:role-changed t)
     (seq? t) (= :lambda (-> t first :value))
     (contains? env t) (= :function (-> t env :role))
     :else (= :function (:role t))))

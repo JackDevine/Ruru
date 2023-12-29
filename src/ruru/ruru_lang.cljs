@@ -30,7 +30,8 @@
 (defn lambda? [f env]
   (cond
     (contains? #{:set! :set-into! :=>} f) false
-    (seq? f) (or (= :lambda (first f)) (and (seq? (first f)) (= 1 (count f)) (= :lambda (first (first f)))))
+    (seq? f) (or (= :lambda (first f))
+                 (and (seq? (first f)) (= 1 (count f)) (= :lambda (ffirst f))))
     (contains? env f) (lambda? (get-in env [f :value] f) env)
     :else false))
 

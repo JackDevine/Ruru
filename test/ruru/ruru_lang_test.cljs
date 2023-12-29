@@ -47,6 +47,8 @@
            -4))
     (is (= (first (ruru/interpret "(2*3-(4+6))+2" env))
            -2))
+    (is (= (first (ruru/interpret "2+(3-(5*6))" ruru/default-environment))
+           -25))
     (is (= (first (ruru/interpret "[1,2,3]" env))
            {'array_dims [3 1] 'value [1 2 3]}))
     (is (= (first (ruru/interpret "[1,2,3] => arr\narr;[4,5,6]" env))
@@ -239,7 +241,17 @@
     (is (= (-> (ruru/interpret "0 (Sin Cos Square Sqrt -)3" ruru/default-environment) first)
            -2))
     (is (= (-> (ruru/interpret "0 Sin Cos Square Sqrt - 3" ruru/default-environment) first)
-           -2))))
+           -2))
+    (is (= (-> (ruru/interpret "f:=Sqrt‿+‿Square Y\n4 F" ruru/default-environment) first)
+           18))
+    (is (= (-> (ruru/interpret "4(Sqrt‿+‿Square Y)" ruru/default-environment) first)
+           18))
+    (is (= (-> (ruru/interpret "4~(Sqrt‿+‿Square Y)" ruru/default-environment) first)
+           18))
+    (is (= (-> (ruru/interpret "f:=~(Sqrt‿+‿Square First) Sqrt\n4 F" ruru/default-environment) first)
+           (Math/sqrt 2)))
+    (is (= (-> (ruru/interpret "f:=~(Sqrt‿+‿Square Y) Sqrt\n4 F" ruru/default-environment) first)
+           (Math/sqrt 18)))))
 
 (deftest parser-evaluation-test
   (testing "Parser and evaluation functions"
@@ -301,12 +313,12 @@
                 "\"2+3-4\"Expression_list Tokenize Remove_whitespace Bind_strands Nest_parens Get_ast"
                 ruru/default-environment) first)
            {'array_dims [3 1]
-            'value [{:role :function, :value "-", :name :-, :start 3, :end 3}
+            'value [{:role :function, :value "-", :name :-, :start 3, :end 3 :role-changed false}
                     {'array_dims [3 1]
-                     'value [{:role :function, :value "+", :name :+, :start 1, :end 1}
-                             {:role :number, :value 2, :start 0, :end 0}
-                             {:role :number, :value 3, :start 2, :end 2}]}
-                    {:role :number, :value 4, :start 4, :end 4}]}))
+                     'value [{:role :function, :value "+", :name :+, :start 1, :end 1 :role-changed false}
+                             {:role :number, :value 2, :start 0, :end 0 :role-changed false}
+                             {:role :number, :value 3, :start 2, :end 2 :role-changed false}]}
+                    {:role :number, :value 4, :start 4, :end 4 :role-changed false}]}))
     (is (= (-> "\"1:10Filter is_even Reduce~+\"Expression_list Tokenize Remove_whitespace Bind_strands Nest_parens Get_ast Eval environment"
                (ruru/interpret ruru/default-environment)
                first)
