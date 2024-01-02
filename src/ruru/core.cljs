@@ -1,6 +1,7 @@
 (ns ^:figwheel-hooks ruru.core
   (:require
    [goog.dom :as gdom]
+   [goog.string :as string]
    [clojure.string :as str]
    [reagent.core :as reagent :refer [atom]]
    [reagent.dom :as rdom]
@@ -27,6 +28,7 @@
    [:div "A lightweight programming environment for solving problems of any size."]
    [:ul
     [:li [:a {:href (rfe/href ::notebook)} "Open an interactive notebook"]]
+    [:li [:a {:href (rfe/href ::interpreter)} "Interactive explanation of how an interpreter works"]]
     [:li [:a {:href (rfe/href ::spreadsheet)} "Open an interactive spreadsheet"]]]])
 
 (defn new-cell-data [] {:val "" :selection nil :result nil :expression-list '() :show-code true})
@@ -47,15 +49,20 @@
 
 (defn tokenize-cell! [cells cell-id]
   (let [cell-val (get-in @cells [cell-id :val])
-        new-expression-list (parser/expression-list (str/replace cell-val #"\\ " "‿"))]
+        new-expression-list (try
+                              (parser/expression-list (str/replace cell-val #"\\ " "‿"))
+                              (catch js/Error e [(str "Unable to parse value\n" cell-val) nil]))]
     (swap! cells #(assoc-in % [cell-id :expression-list] new-expression-list))))
 
+; TODO only run cells below the current cell
 (defn run-cells! [cells cell-order env]
   (cond (empty? cell-order) (reset! notebook-environment env)
         :else (let [first-cell (first cell-order)
                     cell-exp-list (:expression-list (@cells first-cell))
+                    cell-value (:val (@cells first-cell))
                     [[cell-result new-env] time] (let [start (. js/performance now)
-                                                       res (ruru/interpret-exp-list cell-exp-list env)
+                                                       res (try (ruru/interpret-exp-list cell-exp-list env)
+                                                                (catch js/Error e [(str "Unable to evaluate: " cell-value) nil]))
                                                        end (. js/performance now)]
                                                    [res (- end start)])]
                 (do (swap! cells assoc-in [first-cell :result] cell-result)
@@ -78,7 +85,7 @@
           (nil? current-number) (first @cell-order)
           :else (nth @cell-order (dec current-number)))))
 
-(defn atom-input [value selection cell-id]
+(defn atom-input [cells cell-order value selection cell-id]
   [:textarea {:type "text"
               :rows (count (str/split-lines @value))
               :cols 90
@@ -311,7 +318,11 @@
         new-cell-order (into [] (concat before [new-uuid] after))]
     (do (save-notebook!
          @current-notebook
-         (pr-str {:cell-order new-cell-order :cells (assoc @cells new-uuid new-cell)}))
+         (pr-str {:cell-order new-cell-order
+                  :cells (assoc (into {} (map
+                                          (fn [c] {(first c)
+                                                   (select-keys (second c) [:val :show-code])})
+                                          @cells)) new-uuid new-cell)}))
         (load-notebook @current-notebook)
         (select-cell! (inc cell-number)))))
 
@@ -339,7 +350,7 @@
             :style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
       [:div {:class "top"
              :style {:opacity 0}}
-       [atom-input val selection cell-id]]
+       [atom-input cells cell-order val selection cell-id]]
       (into [] (concat formatted-input (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]
      [:div {:style {:display (if (get-in @cells [cell-id :show-code]) "" "none")}}
       (str "  " (get-in @cells [cell-id :execution] "") "ms")]]
@@ -363,7 +374,7 @@
                     :padding-top "50px"}}
       [:div {:class "top"
              :style {:opacity 0}}
-       [atom-input val selection cell-id]]
+       [atom-input cells cell-order val selection cell-id]]
       (into [] (concat (-> formatted-input
                            (assoc-in [1 :style :font-size] "1.8em"))
                        (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]]
@@ -555,6 +566,111 @@
                                                           (@spreadsheet-selection 'value)))])))}]
           [:div {:on-click #(println "spreadsheet clicked")} (spreadsheet @spreadsheet-selection)]]))
 
+(defn code-sample [s]
+  (into [] (concat [:span {:style {:font-family "monospace"
+                                   :font-size "1.5em"}}]
+                   (format/get-hiccup s nil))))
+
+;; (defn new-cell! [cells s ind]
+;;   (do (swap! cells assoc ind {:val s
+;;                               :focus true
+;;                               :expression-list (parser/expression-list s)
+;;                               :result (first (ruru/interpret s ruru/default-environment))})
+;;     ;; (swap! cells conj (assoc (new-cell-data)
+;;     ;;                            :val s
+;;     ;;                            :expression-list (parser/expression-list s)
+;;     ;;                            :result (first (ruru/interpret s ruru/default-environment))))
+;;       nil))
+
+(defn create-singleton-cell! [cells cell-order cell-ind]
+  [:div {:class "flex-container"
+         :style {:padding-left "50px"
+                 :padding-bottom "10px"}}
+   [:div
+    [:div {:class "grid-container"}
+     [:div {:class "outer"}
+      [:div {:class "top"
+             :style {:opacity 0}}
+       [atom-input
+        cells
+        cell-order
+        (reagent/cursor cells [cell-ind :val])
+        (reagent/cursor cells [cell-ind :selection])
+        cell-ind]]
+      (into [] (concat (-> formatted-input
+                           (assoc-in [1 :style :font-size] "1.8em"))
+                       (format/get-hiccup
+                        (get-in @cells [cell-ind :expression-list])
+                        (get-in @cells [cell-ind :selection]))))]]
+    [:div {:style (assoc style/cell-output-style
+                         :font-size "1.8em")}
+     (show-result (get-in @cells [cell-ind :result]) "60vmax")]]])
+
+(defn interpreter-demo []
+  "Hallo")
+
+(def interpreter-cells-values ["% Everything after a '%' is ignored\n4 Sqrt  % -> Sqrt(4)"
+                               "2+3  % -> +(2,3)"
+                               "a:=3  % Set a to 3\nb:=4  % Set b to 4\na+b => c  % c will be 7\n\na‿b‿c"])
+
+(defonce interpreter-cells (atom (mapv (fn [x] {:val x
+                                                :focus true
+                                                :expression-list (parser/expression-list x)})
+                                       interpreter-cells-values)))
+
+(defonce interpreter-cell-order (atom [0 1 2]))
+
+(run-cells! interpreter-cells @interpreter-cell-order ruru/default-environment)
+
+(defn interpreter-page []
+  (fn []
+    [:span.main
+     [:title "Interpreter demo"]
+     [:div {:class "center"
+            :style {"maxWidth" "800px"
+                    :padding-left "10px"
+                    :word-break "break"
+                    :white-space "normal"
+                    :font-family "Helvetica"
+                    :font-size "1em"
+                    :text-align "justify"}}
+      [:h1 "Demystifying the evaluation of programs"]
+      [:i "It's still magic even if you know how it's done "
+       (string/unescapeEntities "&ndash;")
+       " The Wee Free Men: (Discworld Novel 30)"]
+      [:p
+       "The goal of this interactive guide is to describe how computers evaluate programs and give you the tools to reason about and design your own programming systems. It is tempting to treat programming systems as magical black boxes full of complex concepts that are impossible to understand. However, the more that you learn about interpreters and compilers, the more you realise that the true magic is the clever ideas that make them work."]
+      [:h3 "Functions"]
+      [:p "In ruru, expressions are read (and evaluated) from left to right.
+                          Say that " (code-sample "x") " and " (code-sample "y")
+       " are variables and " (code-sample "F")
+       " is a function, " (code-sample "F") " can be called in two forms:"]
+      [:ul
+       [:li "Monadic " (string/unescapeEntities "&ndash;") " "
+        (code-sample "x F") " "
+        (string/unescapeEntities "&rarr;") " "
+        (code-sample "F(x)")]
+       [:li "Dyadic " (string/unescapeEntities "&ndash;") " "
+        (code-sample "x F y") " "
+        (string/unescapeEntities "&rarr;") " "
+        (code-sample "F(x,y)")]]
+      [:p "For example"]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 0)
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 1)
+      [:h4 "Chaining function calls"]
+      [:h3 "User defined functions"]
+      [:h3 "Arrays"]
+      [:h3 "Defining variables"]
+      [:p "You can assign values to variables with the"
+       (code-sample ":=") " or " (code-sample "=>")
+       " operators. The "
+       (code-sample "=>") " function has the same precedence as any other dyadic function."]
+      [:p "For example"]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 2)
+      [:h2 "The interpreter"]
+      [:p "The interpreter is a function that takes an expression and an environment and returns a value. The environment is a map from variable names to values."]
+      (interpreter-demo)]]))
+
 (defn get-app-element []
   (gdom/getElement "app"))
 
@@ -589,6 +705,9 @@
    ["/spreadsheet"
     {:name ::spreadsheet
      :view spreadsheet-page}]
+   ["/interpreter"
+    {:name ::interpreter
+     :view interpreter-page}]
    ["/manage_notebooks"
     {:name ::manage_notebooks
      :view manage-notebooks-page}]])
