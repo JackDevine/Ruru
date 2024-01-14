@@ -3,7 +3,7 @@
 (def string-style {:color "red"})
 
 (def cell-output-style
-  {:font-size "1.3em" :font-family "monospace"
+  {:font-family "monospace"
    :padding-top "2px"
    :padding-bottom "10px"})
 

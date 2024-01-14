@@ -57,10 +57,32 @@
                 lambda-return (first (ruru-eval (first body) lambda-env))]
             [lambda-return env])))
 
+(defn deep-map [f seq1]
+  (cond
+    (empty? seq1) nil
+    (sequential? (first seq1)) (cons (deep-map f (first seq1)) (deep-map f (rest seq1)))
+    :else (cons (f (first seq1)) (deep-map f (rest seq1)))))
+
+(defn compile-lambda [lambda env]
+  (if (fn? lambda) lambda
+      (let [lambda (cond (contains? env lambda) ((env lambda) :value) :else lambda)
+            body-1-args (nth lambda 2)
+            body-2-args (nth lambda 4)]
+        (fn
+          ([x]
+           (first (ruru-eval (deep-map #(cond
+                                          (= :x %) x
+                                          :else %) body-1-args) env)))
+          ([x y]
+           (first (ruru-eval (deep-map #(cond
+                                          (= :x %) x
+                                          (= :y %) y
+                                          :else %) body-2-args) env)))))))
+
 (defn exp-value [exp]
   (cond (base/ruru-quote? exp) exp
         (and (map? exp) (contains? exp :name)) (exp :name)
-        (map? exp) (exp :value)
+        (and (map? exp) (contains? exp :value)) (exp :value)
         (base/ruru-string? exp) exp
         (seq? exp) (map exp-value exp)
         :else exp))
@@ -108,20 +130,6 @@
 (defn ruru-expression? [exp]
   (= :expr (:role exp)))
 
-(defn ruru-eval-exp [exp env]
-  (cond (base/ruru-quote? exp) (let [unquoted (ruru-unquote-quote exp)]
-                                 (ruru-eval-exp unquoted env))
-        (base/ruru-array? exp) (ruru-eval-exp
-                                (first (extract-list [exp]))
-                                env)
-        (and (sequential? exp) (= :list (first exp))) (ruru-eval (get-list-elements exp) env)
-        (and (sequential? exp) (map? (first exp))) [(map #(first (ruru-eval-exp % env)) exp) env]
-        (and (sequential? exp) (sequential? (first exp))) [(map #(first (ruru-eval-exp % env)) exp) env]
-        (seq? exp) (let [assignment+exp (parser/get-assignment exp)
-                         ast (parser/assignment+ast assignment+exp env)]
-                            (ruru-eval ast env))
-        :else (ruru-eval exp env)))
-
 (defn ruru-apply [f args env]
   (cond
     (fn? f) (let [[evaled-args evaled-env] (eval-args '() args env)]
@@ -155,7 +163,10 @@
     (cond
       (= :environment exp) [env env]
       (and (sequential? exp) (= 1 (count exp)) (base/ruru-function? (first exp) env)) [(first exp) env]
+      (and (sequential? exp) (= 1 (count exp)) (lambda? (first exp) env)) [(first exp) env]
       (and (sequential? exp) (= 1 (count exp))) (ruru-eval (first exp) env)
+      (lambda? exp env) [(compile-lambda exp env) env]
+      (base/ruru-array? exp) [exp env]
       (base/ruru-string? exp) [exp env]
       (base/ruru-symbol? exp) [(get-in env [exp :value] (list 'error (str "Undefined symbol " exp))) env]
       (self-evaluating? exp) [exp env]
@@ -236,6 +247,7 @@
    :remove_whitespace (fn [tokens] (list->ruru-array (parser/remove-whitespace (first (extract-string (extract-list [tokens]))))))
    :bind_strands (fn [tokens] (list->ruru-array (parser/bind-strands (first (extract-string (extract-list [tokens]))))))
    :nest_parens (fn [tokens] (list->ruru-array (parser/nest-parens (first (extract-string (extract-list [tokens]))))))
+   :bind_quotes (fn [tokens] (list->ruru-array (parser/bind-quotes (first (extract-string (extract-list [tokens]))))))
    :get_ast (fn [tokens env] (list->ruru-array (parser/get-ast
                                                 (first (extract-string (extract-list [tokens])))
                                                 env)))
@@ -244,9 +256,23 @@
                                                 (and (map? %) (contains? % :name)) (:name %)
                                                 (map? %) (:value %)
                                                 :else %) (first (extract-string (extract-list [tokens]))))))
-   :eval (fn [tokens env] (first (ruru-eval
-                                  (first (extract-string (extract-list [tokens])))
-                                  env)))
+   :reduce (fn [coll op] (if (base/ruru-array? op)
+                           (reduce (base/ruru-get-index op 1)
+                                   (base/ruru-get-index op 2) (coll 'value))
+                           (reduce op (coll 'value))))
+   :eval (fn [tokens env]
+           (try (first (ruru-eval
+                        (first (extract-string (extract-list [tokens])))
+                        env))
+                (catch js/Error e
+                  (list 'error (str "Unable to Eval\n" tokens)))))
+   :eval_env (fn [tokens env]
+               (try {'array_dims [2 1]
+                     'value (ruru-eval
+                             (first (extract-string (extract-list [tokens])))
+                             env)}
+                    (catch js/Error e
+                      (list 'error (str "Unable to Eval\n" tokens)))))
    ; TODO Make the result of Repr valid Ruru code (not edn)
    :repr (fn [x] (with-out-str (pp/pprint (first (extract-string (extract-list [x]))))))
    :criss_cross criss-cross})

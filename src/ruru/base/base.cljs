@@ -1,6 +1,7 @@
 (ns ruru.base.base
   (:require [clojure.set]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [reagent.core :as reagent])
   (:require-macros [ruru.base.macros :refer [inline-resource]]))
 
 (defn ignore-next-form-impl [tokens] (remove #(and (sequential? %1) (= :#_ (first %1))) tokens))
@@ -9,7 +10,7 @@
 
 (defn ruru-symbol? [exp] (keyword? exp))
 
-(defn ruru-string? [exp] (and (seq? exp) (= (first exp) :#_string)))
+(defn ruru-string? [exp] (and (sequential? exp) (= (first exp) :#_string)))
 
 (defn ruru-comment? [exp] (and (sequential? exp) (= (count exp) 2) (= (first exp) :#_)))
 
@@ -39,7 +40,10 @@
       (list 'error (str "Reshape error, dimensions " (dims 'value) " not compatible with element count " (array-length arr)))))
 
 (defn range-impl [start end]
-  {'array_dims [(+ 1 (- end start)) 1] 'value (into [] (range start (+ 1 end)))})
+  (cond
+    (not (number? start)) (list 'error (str "Start value " (str start) " is not a number"))
+    (not (number? end)) (list 'error (str "End value " (str end) " is not a number"))
+    :else {'array_dims [(+ 1 (- end start)) 1] 'value (into [] (range start (+ 1 end)))}))
 
 (defn extend-dim [arr dim]
   (let [old-dim (arr 'array_dims)
@@ -142,6 +146,7 @@
    :html (fn [x] {'html x})
    :set-diff set-diff
    :extend_dim extend-dim
+   :show_array #(assoc % 'show_dims false)
    :t ruru-transpose
    :mul mul
    :reshape reshape-impl
@@ -160,13 +165,14 @@
    :# #(apply hash-map (% 'value))
    (keyword "@") ruru-get-index
    (keyword ":") range-impl
-   :reduce (fn [coll op] (reduce op (coll 'value)))
    :filter (fn [coll pred] (if (not (fn? pred))
                              (list 'error (str pred " is not a function"))
                              (let [filtered (filterv pred (coll 'value))]
                                {'array_dims [(count filtered) 1] 'value filtered})))
-   :map (fn [v f] {'array_dims (v 'array_dims) 'value (mapv f (v 'value))})
+   :map (fn [v f] {'array_dims (v 'array_dims)
+                   'value (mapv f (v 'value))})
    :is_even even?
+   :is_odd odd?
    :identity identity
    :set! :set!
    :set_into! :set_into!
@@ -181,6 +187,10 @@
             (ruru-array? %) (last (% 'value))
             (ruru-string? %) (list :#_string (first (second %)))
             :else (last %))
+   :rest #(cond
+            (ruru-array? %) {'array_dims [(dec (count (% 'value))) 1]
+                             'value (rest (% 'value))}
+            :else (rest %))
    (keyword ";") ruru-concat
    :string #(list :#_string (str (subs (second %1) 0 (- (count (second %1)) 1))
                                  (subs (second %2) 1)))

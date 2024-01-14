@@ -106,7 +106,7 @@
 
 (defn comment? [t] (and (seq? t) (= :#_ (first t))))
 
-(defn token-string? [t] (and (seq? t) (= :#_string (first t))))
+(defn token-string? [t] (and (sequential? t) (= :#_string (first t))))
 
 (defn token-role-change? [t] (and (sequential? t) (= :#_variable (first t))))
 
@@ -279,8 +279,7 @@
                               :role-changed role-changed)
       ;; :else {:role role :role-changed role-changed
       ;;        :value (#(unnest-exprs % env) inner-ast)}
-      :else inner-ast
-      )))
+      :else inner-ast)))
 
 (defn get-ast-2-tokens [tokens env]
   (let [ft (first tokens)

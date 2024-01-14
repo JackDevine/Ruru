@@ -13,7 +13,10 @@
    [ruru.style :as style]
    [ruru.base.base :as base]
    [ruru.format :as format]
-   [ruru.parser :as parser]))
+   [ruru.parser :as parser]
+   [ruru.interpreter :as interpreter]
+   [spec-tools.form :as form]
+   [ruru.shared_input :as shared-input]))
 
 (defn home-page []
   [:div
@@ -28,7 +31,8 @@
    [:div "A lightweight programming environment for solving problems of any size."]
    [:ul
     [:li [:a {:href (rfe/href ::notebook)} "Open an interactive notebook"]]
-    [:li [:a {:href (rfe/href ::interpreter)} "Interactive explanation of how an interpreter works"]]
+    [:li [:a {:href (rfe/href ::interpreter)} "Explanation of how an interpreter works"]
+     [:ul [:li [:a {:href (rfe/href ::interpreter-notebook)} "Accompanying interactive notebook"]]]]
     [:li [:a {:href (rfe/href ::spreadsheet)} "Open an interactive spreadsheet"]]]])
 
 (defn new-cell-data [] {:val "" :selection nil :result nil :expression-list '() :show-code true})
@@ -50,40 +54,31 @@
 (defn tokenize-cell! [cells cell-id]
   (let [cell-val (get-in @cells [cell-id :val])
         new-expression-list (try
-                              (parser/expression-list (str/replace cell-val #"\\ " "‿"))
+                              (parser/expression-list (-> cell-val
+                                                          (str/replace #"\\ " "‿")
+                                                          (str/replace #"\\" " ")
+                                                          ))
                               (catch js/Error e [(str "Unable to parse value\n" cell-val) nil]))]
     (swap! cells #(assoc-in % [cell-id :expression-list] new-expression-list))))
 
-; TODO only run cells below the current cell
-(defn run-cells! [cells cell-order env]
-  (cond (empty? cell-order) (reset! notebook-environment env)
-        :else (let [first-cell (first cell-order)
-                    cell-exp-list (:expression-list (@cells first-cell))
-                    cell-value (:val (@cells first-cell))
-                    [[cell-result new-env] time] (let [start (. js/performance now)
-                                                       res (try (ruru/interpret-exp-list cell-exp-list env)
-                                                                (catch js/Error e [(str "Unable to evaluate: " cell-value) nil]))
-                                                       end (. js/performance now)]
-                                                   [res (- end start)])]
-                (do (swap! cells assoc-in [first-cell :result] cell-result)
-                    (swap! cells assoc-in [first-cell :execution] time)
-                    (run-cells! cells (rest cell-order) new-env)))))
-
-(defn inc-presented-cell [c]
-  (let [indexed-cells (map-indexed vector @cell-order)
+(defn inc-presented-cell [c & order+cells]
+  (let [cell-order (if (empty? order+cells) @cell-order (first order+cells))
+        cells (if (empty? order+cells) @cells (second order+cells))
+        indexed-cells (map-indexed vector cell-order)
         current-presented-cell (filter #(= c (second %)) indexed-cells)
         current-number (ffirst current-presented-cell)]
-    (cond (= current-number (dec (count @cells))) c
-          (nil? current-number) (first @cell-order)
-          :else (nth @cell-order (inc current-number)))))
+    (cond (= current-number (dec (count cells))) c
+          (nil? current-number) (first cell-order)
+          :else (nth cell-order (inc current-number)))))
 
-(defn dec-presented-cell [c]
-  (let [indexed-cells (map-indexed vector @cell-order)
+(defn dec-presented-cell [c & order+cells]
+  (let [cell-order (if (empty? order+cells) @cell-order (first order+cells))
+        indexed-cells (map-indexed vector cell-order)
         current-presented-cell (filter #(= c (second %)) indexed-cells)
         current-number (ffirst current-presented-cell)]
     (cond (= current-number 0) c
-          (nil? current-number) (first @cell-order)
-          :else (nth @cell-order (dec current-number)))))
+          (nil? current-number) (first cell-order)
+          :else (nth cell-order (dec current-number)))))
 
 (defn atom-input [cells cell-order value selection cell-id]
   [:textarea {:type "text"
@@ -107,7 +102,8 @@
                                         .-target
                                         .-selectionStart))
                             (tokenize-cell! cells cell-id)
-                            (run-cells! cells @cell-order ruru/default-environment))
+                            (println "Running cells")
+                            (shared-input/run-cells! cells @cell-order notebook-environment @notebook-environment))
               :on-key-up #(do (reset! selection
                                       (-> %
                                           .-target
@@ -184,6 +180,7 @@
         overflow-style (if @presentation-mode? "wrap" "scroll")
         html-font-family (if @presentation-mode? "Arial" "monospace")]
     (cond
+      (contains? r 'shared-input) (get-in r ['shared-input 'html])
       (base/ruru-string? r) [:div
                              {:style (assoc style/string-style
                                             :width (if @presentation-mode? "auto" show-width)
@@ -208,7 +205,7 @@
     [:div (assoc {:style style/variable-explorer-style} "width" "600px")
      (show-map defined-vars "Variable name" "Value")]))
 
-(defonce current-notebook (atom ""))
+(defonce current-notebook (atom "__interpreter_demo_notebook__.ruru"))
 
 (defonce display-create-new-notebook (atom "none"))
 
@@ -281,19 +278,30 @@
    :selection nil :result nil
    :expression-list (parser/expression-list (:val c))})
 
-(defn load-notebook [name]
-  (let [notebook-data (edn/read-string (.getItem (.-localStorage js/window) name))
+(defn load-notebook [name & notebook-data]
+  (let [notebook-data (if (empty? notebook-data)
+                        (edn/read-string (.getItem (.-localStorage js/window) name))
+                        (first notebook-data))
         cell-order-data (:cell-order notebook-data)
-        cell-data (:cells notebook-data)
-        cell-data cell-data]
+        cell-data (:cells notebook-data)]
     (if (= (mapv :val (vals cell-data)) (mapv :val (vals @cells)))
-      nil
+      (println (str name " already loaded"))
       (do
         (println (str "Loading " name))
         (reset! notebook-environment ruru/default-environment)
+        (swap! notebook-environment
+               assoc :shared_input {:role :function
+                                    :value #(shared-input/shared-input %1
+                                                                       %2
+                                                                       notebook-environment
+                                                                       cells
+                                                                       cell-order)})
+        (swap! notebook-environment
+               assoc :input_value {:role :function
+                                   :value shared-input/shared-input-value})
         (reset! cell-order cell-order-data)
         (reset! cells (into {} (for [[id c] cell-data] [id (load-cell c)])))
-        (run-cells! cells @cell-order @notebook-environment)
+        (shared-input/run-cells! cells @cell-order notebook-environment @notebook-environment)
         (select-first-cell!)))))
 
 (defn list-saved-notebooks [saved-notebooks]
@@ -365,8 +373,8 @@
                  :style {"font-size" "0.9em" :width "15px" :background "transparent" :border "0px black"}}
         [:img {:width "15px" :src "assets/delete.png"}]]]]]]])
 
-(defn present-cell [val selection cell-id]
-  [:div {:class "flex-container" :style {:padding-left "50px"}}
+(defn present-cell [cells val selection cell-id]
+  [:div {:class "flex-container" :style {:padding-left "50px" :font-size "1.3em"}}
    [:div
     [:div {:class "grid-container"}
      [:div {:class "outer"
@@ -375,11 +383,9 @@
       [:div {:class "top"
              :style {:opacity 0}}
        [atom-input cells cell-order val selection cell-id]]
-      (into [] (concat (-> formatted-input
-                           (assoc-in [1 :style :font-size] "1.8em"))
+      (into [] (concat formatted-input
                        (format/get-hiccup (get-in @cells [cell-id :expression-list]) @selection)))]]
-    [:div {:style (assoc style/cell-output-style
-                         :font-size "1.8em")}
+    [:div {:style style/cell-output-style}
      (show-result (get-in @cells [cell-id :result]) "60vmax")]]])
 
 (defn create-new-notebook-dialog []
@@ -454,11 +460,12 @@
     [:button {:on-click #(reset! notebook-environment ruru/default-environment)} "Reset notebook"]
     [:div {:style {:position "absolute" :top 0 :right 0}} (show-environment @notebook-environment)]]])
 
-(defn render-presentation-mode []
+(defn render-presentation-mode [cells presented-cell current-notebook]
   [:div
    (do
-     (println (str "Starting presentation mode for " @current-notebook))
-     (present-cell (reagent/cursor cells [@presented-cell :val])
+     (println (str "Starting presentation mode for " current-notebook))
+     (present-cell cells
+                   (reagent/cursor cells [@presented-cell :val])
                    (reagent/cursor cells [@presented-cell :selection]) @presented-cell))])
 
 (defn notebook-page []
@@ -487,7 +494,7 @@
                                   :else nil))))))}
           [:title @current-notebook]
           (if @presentation-mode?
-            (render-presentation-mode)
+            (render-presentation-mode cells presented-cell @current-notebook)
             (render-interactive-mode))]))
 
 (defonce spreadsheet-selection (atom {'array_dims [2 1] 'value [1 1]}))
@@ -571,17 +578,6 @@
                                    :font-size "1.5em"}}]
                    (format/get-hiccup s nil))))
 
-;; (defn new-cell! [cells s ind]
-;;   (do (swap! cells assoc ind {:val s
-;;                               :focus true
-;;                               :expression-list (parser/expression-list s)
-;;                               :result (first (ruru/interpret s ruru/default-environment))})
-;;     ;; (swap! cells conj (assoc (new-cell-data)
-;;     ;;                            :val s
-;;     ;;                            :expression-list (parser/expression-list s)
-;;     ;;                            :result (first (ruru/interpret s ruru/default-environment))))
-;;       nil))
-
 (defn create-singleton-cell! [cells cell-order cell-ind]
   [:div {:class "flex-container"
          :style {:padding-left "50px"
@@ -606,9 +602,6 @@
                          :font-size "1.8em")}
      (show-result (get-in @cells [cell-ind :result]) "60vmax")]]])
 
-(defn interpreter-demo []
-  "Hallo")
-
 (def interpreter-cells-values ["% Everything after a '%' is ignored\n4 Sqrt  % -> Sqrt(4)"
                                "2+3  % -> +(2,3)"
                                "a:=3  % Set a to 3\nb:=4  % Set b to 4\na+b => c  % c will be 7\n\na‿b‿c"])
@@ -620,11 +613,15 @@
 
 (defonce interpreter-cell-order (atom [0 1 2]))
 
-(run-cells! interpreter-cells @interpreter-cell-order ruru/default-environment)
+(shared-input/run-cells! interpreter-cells
+                         @interpreter-cell-order
+                         notebook-environment
+                         @notebook-environment)
 
 (defn interpreter-page []
   (fn []
-    [:span.main
+    [:center
+     {:style {:padding-bottom "700px"}}
      [:title "Interpreter demo"]
      [:div {:class "center"
             :style {"maxWidth" "800px"
@@ -667,9 +664,37 @@
        (code-sample "=>") " function has the same precedence as any other dyadic function."]
       [:p "For example"]
       (create-singleton-cell! interpreter-cells interpreter-cell-order 2)
-      [:h2 "The interpreter"]
-      [:p "The interpreter is a function that takes an expression and an environment and returns a value. The environment is a map from variable names to values."]
-      (interpreter-demo)]]))
+      [:h2 [:a {:href (rfe/href ::interpreter-notebook)} "Interactive notebook showing how the Ruru interpreter works"]]]]))
+
+(defn interpreter-notebook-page []
+  (fn [] [:span.main
+          {:on-load #((if @loading-done
+                        nil
+                        (do (println "Loading...")
+                            (reset! current-notebook "__interpreter_demo_notebook__.ruru")
+                            (save-notebook! "__interpreter_demo_notebook__.ruru"
+                                            (pr-str interpreter/interpreter-edn))
+                            (load-notebook "__interpreter_demo_notebook__.ruru")
+                            (reset! current-notebook "__interpreter_demo_notebook__.ruru")
+                            (swap! loading-done not)
+                            (reset! presented-cell (first @cell-order))
+                            (reset! presentation-mode? true))))}
+          [:title "Interpreter demo"]
+          [:div {:align "right"}
+           [:button {:on-click #(do (println "Previous")
+                                    (swap! presented-cell
+                                           (fn [c] (dec-presented-cell c @cell-order @cells))))} "Previous"]
+           [:button {:on-click #(do (println "Next")
+                                    (swap! presented-cell
+                                           (fn [c] (inc-presented-cell c @cell-order @cells))))} "Next"]]
+          [:div
+           [:span
+            {:style {:display "none"}}
+            (into [] (concat [:div] (mapv #(create-cell
+                                            (reagent/cursor cells [% :val])
+                                            (reagent/cursor cells [% :selection]) %)
+                                          @cell-order)))]
+           (render-presentation-mode cells presented-cell @current-notebook)]]))
 
 (defn get-app-element []
   (gdom/getElement "app"))
@@ -708,6 +733,9 @@
    ["/interpreter"
     {:name ::interpreter
      :view interpreter-page}]
+   ["/interpreter-notebook"
+    {:name ::interpreter-notebook
+     :view interpreter-notebook-page}]
    ["/manage_notebooks"
     {:name ::manage_notebooks
      :view manage-notebooks-page}]])
