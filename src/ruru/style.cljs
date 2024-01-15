@@ -4,6 +4,7 @@
 
 (def cell-output-style
   {:font-family "monospace"
+   :font-size "1.2em"
    :padding-top "2px"
    :padding-bottom "10px"})
 

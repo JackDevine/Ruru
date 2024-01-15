@@ -146,7 +146,7 @@
    :html (fn [x] {'html x})
    :set-diff set-diff
    :extend_dim extend-dim
-   :show_array #(assoc % 'show_dims false)
+   :show_array #(assoc % 'show_dims false 'show_border false)
    :t ruru-transpose
    :mul mul
    :reshape reshape-impl
@@ -154,6 +154,7 @@
    :upper_case #(list :#_string (str/upper-case (second %)))
    :lower_case #(list :#_string (str/lower-case (second %)))
    :square #(* %1 %1)
+   :inverse_square #(/ 1.0 (* %1 %1))
    :sqrt #(Math/sqrt %1)
    :sin Math/sin
    :cos Math/cos
