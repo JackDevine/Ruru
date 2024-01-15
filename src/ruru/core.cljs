@@ -121,13 +121,14 @@
     (nil? (get-in hiccup path value)) value
     :else (assoc-in hiccup path value)))
 
-(defn cols->row-hiccup [cols row & [selection]]
+(defn cols->row-hiccup [cols row & [selection show-border]]
   (let [row-vals (map #(nth % row) cols)
         row-hiccup (into [] (concat [:tr {:style {:border "0px solid black"}}]
                                     (mapv #(into []
-                                                 (concat [:td>div {:style {:overflow-x "scroll"
-                                                                           :width "auto"
-                                                                           :min-height "1em"}}]
+                                                 (concat [:td {:style {:overflow-x "scroll"
+                                                                       :width "auto"
+                                                                       :min-height "1em"
+                                                                       :border (if show-border "" "0px solid black")}} [:div]]
                                                          [(set-argument (show-result %) [1 :style :width] "auto")])) row-vals)))]
     (cond
       (empty? selection) row-hiccup
@@ -143,10 +144,10 @@
         nested-array (not (empty? (filter #(or (base/ruru-array? %) (map? %)) value)))
         table (into [] (concat [:table {:style {"table-layout" (if nested-array "auto" "fixed")
                                                 :width (if @presentation-mode? "100%" (str (* 60 (second dims)) "px"))
-                                                :border "0px black"}}]
-                               (map #(cols->row-hiccup cols % selection) (range (first dims)))))]
+                                                :border "0px white"}}]
+                               (map #(cols->row-hiccup cols % selection (get arr 'show_border true)) (range (first dims)))))]
     [:div {:style (merge
-                   {:outline "2px solid grey"
+                   {:outline (if @presentation-mode? "0px solid black" "2px solid grey")
                     "max-height" (if @presentation-mode? "" "15em")
                     "max-width" "80vmax"
                     "overflow-x" (if @presentation-mode? "visible" "scroll")
@@ -602,9 +603,17 @@
                          :font-size "1.8em")}
      (show-result (get-in @cells [cell-ind :result]) "60vmax")]]])
 
-(def interpreter-cells-values ["\"2+2 Sqrt\" => example_program\n\neval_exp:={x\n  Run_reader_macros y\n  Tokenize\n  Remove_whitespace\n  Bind_strands\n  Nest_parens\n  Bind_quotes\n  Get_ast % Get_assignment Assignment+ast\n  Eval_env y}\n\ninterpret:={\nx Expression_list\n  Reduce[{[y]Eval_exp(x@2)},[[],y]]@1\n}\n\nexample_program Interpret environment"
+(def interpreter-cells-values ["\"x:=2+3\n2+x\" => example_program\n\neval_exp:={x\n  Run_reader_macros y\n  Tokenize\n  Remove_whitespace\n  Bind_strands\n  Nest_parens\n  Bind_quotes\n  Get_assignment\n  Assignment_and_ast\n  Eval_env y}\n\ninterpret:={\nx Expression_list\n  Reduce[{[y]Eval_exp(x@2)},[[],y]]@1\n}\n\nexample_program Interpret environment"
                                "% Everything after a '%' is ignored\n4 Sqrt  % -> Sqrt(4)"
                                "2+3  % -> +(2,3)"
+                               "2 Square Sqrt / 2  % /(Sqrt(Square(2)), 2) -> 1"
+                               "0 Sin\n  Cos\n  *pi\n  Sin"
+                               "1‿2‿3"
+                               "[1,2,[3,4]]"
+                               "1:5"
+                               "[1:10Reshape 5‿2,[1,2,3]@2]"
+                               "1:10Filter is_even"
+                               "1:5Reduce~+  % 1+2+3+4+5 -> 15"
                                "a:=3  % Set a to 3\nb:=4  % Set b to 4\na+b => c  % c will be 7\n\na‿b‿c"])
 
 (defonce interpreter-cells (atom (mapv (fn [x] {:val x
@@ -612,7 +621,7 @@
                                                 :expression-list (parser/expression-list x)})
                                        interpreter-cells-values)))
 
-(defonce interpreter-cell-order (atom [0 1 2 3]))
+(defonce interpreter-cell-order (atom [0 1 2 3 4 5 6 7 8 9 10 11]))
 
 (shared-input/run-cells! interpreter-cells
                          @interpreter-cell-order
@@ -633,16 +642,38 @@
                     :font-size "1em"
                     :text-align "justify"}}
       [:h1 "Demystifying the evaluation of programs"]
-      [:i "It's still magic even if you know how it's done "
-       (string/unescapeEntities "&ndash;")
-       " The Wee Free Men: (Discworld Novel 30)"]
+      [:center {:style {:font-size "1.3em"}}
+       [:span "“It's still magic even if you know how it's done”"]
+       ;; (string/unescapeEntities "&ndash;")
+       [:br]
+       [:span {:style {:font-size "0.7em"}}
+        "The Wee Free Men: Discworld Novel 30, Terry Pratchett"]]
       [:p
-       "The goal of this interactive guide is to describe how computers evaluate programs and give you the tools to reason about and design your own programming systems. It is tempting to treat programming systems as magical black boxes full of complex concepts that are impossible to understand. However, the more that you learn about interpreters and compilers, the more you realise that the true magic is the clever ideas that make them work."]
+       "This interactive guide describes how computers evaluate programs and give you the tools to reason about, and design your own programming systems."]
+      [:p "It is tempting to treat programming systems as magical black boxes full of complex concepts that are impossible to understand. However, the more that you learn about interpreters and compilers, the more you realise that the true magic is the clever ideas behind them."]
       [:p "This tutuorial will let you interact with and understand all of the components of the following program:"]
       (create-singleton-cell! interpreter-cells interpreter-cell-order 0)
       [:p "Try changing the text between the quotation marks on the first line."]
       [:p "The above program demonstrates that an interpreter can be represented as a function.
            If you were to replace any of the component functions in the program, then you would create your own programming language."]
+      [:p "Although modern day programming environments are filled with complicated ideas, techniques and tools that have built up over decades of research, the essence of interpreters is captured in the following quote from "
+       [:a {:href "https://mitp-content-server.mit.edu/books/content/sectbyfn/books_pres_0/6515/sicp.zip/full-text/book/book-Z-H-25.html#%_chap_4"} "The Structure and Interpretation of Computer Programs:"]]
+      [:p {:style {:margin-left "4em"
+                   :font-weigth "italic"}}
+       [:i "Metalinguistic abstraction - establishing new languages - plays an important role in all branches of engineering design. It is particularly important to computer programming, because in programming not only can we formulate new languages but we can also implement these languages by constructing evaluators. An evaluator (or interpreter) for a programming language is a procedure that, when applied to an expression of the language, performs the actions required to evaluate that expression."]]
+      [:p {:style {:margin-left "4em"
+                   :font-weigth "italic"}}
+       [:i "It is no exaggeration to regard this as the most fundamental idea in programming:"]]
+      [:p {:style {:margin-left "8em"
+                   :font-weigth "italic"}}
+       [:i "The evaluator, which determines the meaning of expressions in a programming language, is just another program."]]
+      [:p {:style {:margin-left "4em"
+                   :font-weigth "italic"}}
+       [:i "To appreciate this point is to change our images of ourselves as programmers. We come to see ourselves as designers of languages, rather than only users of languages designed by others."]]
+      [:h2 "The ruru programming language"]
+      [:p "This guide will explain the evaluation model of ruru - a lightweight programming environment for solving problems of any size. Ruru has very little syntax, so we can talk about the essential properties of the interpreter without getting bogged down in details. Ruru also runs in your browser with zero installation, so you can edit and interact with all of the examples to help you learn the language."]
+      [:p "Below is a guide to the language syntax that will help you understand the examples in the interactive tutorial. Feel free to skip the examples for now and dive straight into the interactive part:"]
+      [:h3 [:a {:href (rfe/href ::interpreter-notebook)} "Interactive notebook showing how the Ruru interpreter works"]]
       [:h3 "Functions"]
       [:p "In ruru, expressions are read from left to right.
                           Say that " (code-sample "x") " and " (code-sample "y")
@@ -661,16 +692,30 @@
       (create-singleton-cell! interpreter-cells interpreter-cell-order 1)
       (create-singleton-cell! interpreter-cells interpreter-cell-order 2)
       [:h4 "Chaining function calls"]
-      [:h3 "User defined functions"]
+      [:p "Since functions evaluate from left to right, ruru provides a natural way to chain function calls:"]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 3)
+      [:p "A new line starting with two spaces is considered a continuation of the previous line:"]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 4)
       [:h3 "Arrays"]
+      [:p "Arrays can be defined either using the strand (‿) notation or using square braces [] and separating values with commas. Strands (‿) can be entered by typing backslash (\\) and then a space."]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 5)
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 6)
+      [:p "The " (code-sample ":") " (range) function creates a range from a given start to end point:"]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 7)
+      [:p "Arrays can be reshaped with the " (code-sample "Reshape") " function and indexed with the " (code-sample "@") " function:"]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 8)
+      [:p "The " (code-sample "Filter") " function takes an array as it's left argument and a function (called the predicate) as it's right argument. " (code-sample "Filter") " returns the values of the array where the predicate function returns true. In order to pass one function to another you have to start the function being passed with a lowercase letter. Using the uppercase form of the function in ruru will chain the function calls together."]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 9)
+      [:p "Some functions like " (code-sample "+") " don't have lowercase forms, so you have to use a ~ to tell ruru to treat them as variables:"]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 10)
       [:h3 "Defining variables"]
       [:p "You can assign values to variables with the"
        (code-sample ":=") " or " (code-sample "=>")
        " operators. The "
        (code-sample "=>") " function has the same precedence as any other dyadic function."]
       [:p "For example"]
-      (create-singleton-cell! interpreter-cells interpreter-cell-order 3)
-      [:h2 [:a {:href (rfe/href ::interpreter-notebook)} "Interactive notebook showing how the Ruru interpreter works"]]]]))
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 11)
+      [:h3 [:a {:href (rfe/href ::interpreter-notebook)} "Interactive notebook showing how the Ruru interpreter works"]]]]))
 
 (defn interpreter-notebook-page []
   (fn [] [:span.main

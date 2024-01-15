@@ -230,6 +230,7 @@
           crossed-value (mapv #(criss-cross-impl % (not direction)) array-value)]
       (assoc l
              'show_dims false
+             'show_border true
              'value crossed-value
              'transpose direction
              'array_dims (if direction array-dims (into [] (reverse array-dims)))))

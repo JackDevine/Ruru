@@ -58,6 +58,10 @@ h3 {
   font-size: 1.5em
 }
 
+h4 {
+  font-size: 1.2em
+}
+
 a {
   color: #09f;
   text-decoration: none;
@@ -90,4 +94,9 @@ button {
 .flex-container {
   display: flex;
   flex-wrap: wrap;
+}
+
+p {
+  font-size: 1.2em;
+  line-height: 1.4;
 }
