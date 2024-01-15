@@ -27,6 +27,7 @@
               :rows (count (str/split-lines @value))
               :cols 90
               :class "top"
+              :style {:font-size "25px"}
               :value (str/replace @value #"\\ " "‿")
               :focus (not (nil? @selection))
               :on-blur #(reset! selection nil)
@@ -65,6 +66,7 @@
         input-field [:div
                      {:class "outer"
                       :style (assoc style/cell-output-style
+                                    :font-size "25px"
                                     :background-color "lightgoldenrodyellow"
                                     :border "2px solid grey"
                                     :border-radius "3px")}

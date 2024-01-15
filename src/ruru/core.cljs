@@ -112,7 +112,8 @@
 (def formatted-input
   [:div {:class "below"
          :opacity "1.0"
-         :style {:font-family "monospace" :outline "2px solid grey"}}])
+         :style {:font-family "monospace" :font-size style/cell-font-size
+                 :outline "2px solid grey"}}])
 
 (declare show-result)
 
@@ -594,8 +595,7 @@
         (reagent/cursor cells [cell-ind :val])
         (reagent/cursor cells [cell-ind :selection])
         cell-ind]]
-      (into [] (concat (-> formatted-input
-                           (assoc-in [1 :style :font-size] "1.8em"))
+      (into [] (concat formatted-input
                        (format/get-hiccup
                         (get-in @cells [cell-ind :expression-list])
                         (get-in @cells [cell-ind :selection]))))]]
