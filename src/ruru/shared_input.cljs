@@ -54,8 +54,7 @@
                    (format/get-hiccup
                     (parser/expression-list (-> @value
                                                 (str/replace #"\\ " "‿")
-                                          ;;       (str/replace #"\\" " ")
-                                                ))
+                                                (str/replace #"\\" " ")))
                     @selection))))
 
 (defn shared-input [var-name v+selection env cells cell-order]

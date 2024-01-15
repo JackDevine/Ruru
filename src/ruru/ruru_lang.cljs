@@ -2,7 +2,8 @@
   (:require
    [ruru.base.base :as base]
    [ruru.parser :as parser]
-   [clojure.pprint :as pp]))
+   [clojure.pprint :as pp]
+   [clojure.string :as str]))
 
 (defn assignment? [exp] (= exp :set!))
 (defn assignment-into? [exp] (contains? #{:set_into! :=>} exp))
@@ -218,6 +219,7 @@
 (defn eval-expression-list
   [ruru-string]
   (let [s (subs (second ruru-string) 1 (dec (count (second ruru-string))))
+        s (-> s (str/replace #"\\" " ") (str/replace #"\\ " "‿"))
         exp-list (parser/expression-list s)]
     (list->ruru-array exp-list)))
 
@@ -260,6 +262,11 @@
                            (reduce (base/ruru-get-index op 1)
                                    (base/ruru-get-index op 2) (coll 'value))
                            (reduce op (coll 'value))))
+   :get_assignment (fn [tokens] (list->ruru-array (parser/get-assignment
+                                                   (first (extract-string (extract-list [tokens]))))))
+   :assignment_and_ast (fn [tokens env] (list->ruru-array (parser/assignment+ast
+                                                           (first (extract-string (extract-list [tokens])))
+                                                           env)))
    :eval (fn [tokens env]
            (try (first (ruru-eval
                         (first (extract-string (extract-list [tokens])))
@@ -273,7 +280,7 @@
                              env)}
                     (catch js/Error e
                       (list 'error (str "Unable to Eval\n" tokens)))))
-   ; TODO Make the result of Repr valid Ruru code (not edn)
+     ; TODO Make the result of Repr valid Ruru code (not edn)
    :repr (fn [x] (with-out-str (pp/pprint (first (extract-string (extract-list [x]))))))
    :criss_cross criss-cross})
 

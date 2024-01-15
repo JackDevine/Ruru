@@ -602,7 +602,8 @@
                          :font-size "1.8em")}
      (show-result (get-in @cells [cell-ind :result]) "60vmax")]]])
 
-(def interpreter-cells-values ["% Everything after a '%' is ignored\n4 Sqrt  % -> Sqrt(4)"
+(def interpreter-cells-values ["\"2+2 Sqrt\" => example_program\n\neval_exp:={x\n  Run_reader_macros y\n  Tokenize\n  Remove_whitespace\n  Bind_strands\n  Nest_parens\n  Bind_quotes\n  Get_ast % Get_assignment Assignment+ast\n  Eval_env y}\n\ninterpret:={\nx Expression_list\n  Reduce[{[y]Eval_exp(x@2)},[[],y]]@1\n}\n\nexample_program Interpret environment"
+                               "% Everything after a '%' is ignored\n4 Sqrt  % -> Sqrt(4)"
                                "2+3  % -> +(2,3)"
                                "a:=3  % Set a to 3\nb:=4  % Set b to 4\na+b => c  % c will be 7\n\na‿b‿c"])
 
@@ -611,7 +612,7 @@
                                                 :expression-list (parser/expression-list x)})
                                        interpreter-cells-values)))
 
-(defonce interpreter-cell-order (atom [0 1 2]))
+(defonce interpreter-cell-order (atom [0 1 2 3]))
 
 (shared-input/run-cells! interpreter-cells
                          @interpreter-cell-order
@@ -637,8 +638,13 @@
        " The Wee Free Men: (Discworld Novel 30)"]
       [:p
        "The goal of this interactive guide is to describe how computers evaluate programs and give you the tools to reason about and design your own programming systems. It is tempting to treat programming systems as magical black boxes full of complex concepts that are impossible to understand. However, the more that you learn about interpreters and compilers, the more you realise that the true magic is the clever ideas that make them work."]
+      [:p "This tutuorial will let you interact with and understand all of the components of the following program:"]
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 0)
+      [:p "Try changing the text between the quotation marks on the first line."]
+      [:p "The above program demonstrates that an interpreter can be represented as a function.
+           If you were to replace any of the component functions in the program, then you would create your own programming language."]
       [:h3 "Functions"]
-      [:p "In ruru, expressions are read (and evaluated) from left to right.
+      [:p "In ruru, expressions are read from left to right.
                           Say that " (code-sample "x") " and " (code-sample "y")
        " are variables and " (code-sample "F")
        " is a function, " (code-sample "F") " can be called in two forms:"]
@@ -652,8 +658,8 @@
         (string/unescapeEntities "&rarr;") " "
         (code-sample "F(x,y)")]]
       [:p "For example"]
-      (create-singleton-cell! interpreter-cells interpreter-cell-order 0)
       (create-singleton-cell! interpreter-cells interpreter-cell-order 1)
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 2)
       [:h4 "Chaining function calls"]
       [:h3 "User defined functions"]
       [:h3 "Arrays"]
@@ -663,7 +669,7 @@
        " operators. The "
        (code-sample "=>") " function has the same precedence as any other dyadic function."]
       [:p "For example"]
-      (create-singleton-cell! interpreter-cells interpreter-cell-order 2)
+      (create-singleton-cell! interpreter-cells interpreter-cell-order 3)
       [:h2 [:a {:href (rfe/href ::interpreter-notebook)} "Interactive notebook showing how the Ruru interpreter works"]]]]))
 
 (defn interpreter-notebook-page []
@@ -678,7 +684,14 @@
                             (reset! current-notebook "__interpreter_demo_notebook__.ruru")
                             (swap! loading-done not)
                             (reset! presented-cell (first @cell-order))
-                            (reset! presentation-mode? true))))}
+                            (reset! presentation-mode? true)
+                            (.addEventListener
+                             js/window
+                             "keydown"
+                             (fn [e]
+                               (cond
+                                 (= "Escape" (.-key e)) (reset! presentation-mode? false)
+                                 :else nil))))))}
           [:title "Interpreter demo"]
           [:div {:align "right"}
            [:button {:on-click #(do (println "Previous")
@@ -687,14 +700,9 @@
            [:button {:on-click #(do (println "Next")
                                     (swap! presented-cell
                                            (fn [c] (inc-presented-cell c @cell-order @cells))))} "Next"]]
-          [:div
-           [:span
-            {:style {:display "none"}}
-            (into [] (concat [:div] (mapv #(create-cell
-                                            (reagent/cursor cells [% :val])
-                                            (reagent/cursor cells [% :selection]) %)
-                                          @cell-order)))]
-           (render-presentation-mode cells presented-cell @current-notebook)]]))
+          (if @presentation-mode?
+            (render-presentation-mode cells presented-cell @current-notebook)
+            (render-interactive-mode))]))
 
 (defn get-app-element []
   (gdom/getElement "app"))
