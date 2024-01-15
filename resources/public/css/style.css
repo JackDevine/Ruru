@@ -2,6 +2,10 @@ body {
   background-color: white;
 }
 
+::-webkit-scrollbar {
+  width: 12px;
+}
+
 table, td, th {
   border: 2px solid lightgrey;
   overflow-x: scroll;
