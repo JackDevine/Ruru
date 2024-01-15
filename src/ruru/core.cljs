@@ -56,8 +56,7 @@
         new-expression-list (try
                               (parser/expression-list (-> cell-val
                                                           (str/replace #"\\ " "‿")
-                                                          (str/replace #"\\" " ")
-                                                          ))
+                                                          (str/replace #"\\" " ")))
                               (catch js/Error e [(str "Unable to parse value\n" cell-val) nil]))]
     (swap! cells #(assoc-in % [cell-id :expression-list] new-expression-list))))
 
@@ -83,7 +82,7 @@
 (defn atom-input [cells cell-order value selection cell-id]
   [:textarea {:type "text"
               :rows (count (str/split-lines @value))
-              :cols 90
+              :cols 50
               :style style/cell-input-style
               :class "ruru-cell"
               :value (str/replace @value #"\\ " "‿")
@@ -112,7 +111,8 @@
 (def formatted-input
   [:div {:class "below"
          :opacity "1.0"
-         :style {:font-family "monospace" :outline "2px solid grey"}}])
+         :style {:font-family "monospace" :font-size style/cell-font-size
+                 :outline "2px solid grey"}}])
 
 (declare show-result)
 
@@ -594,8 +594,7 @@
         (reagent/cursor cells [cell-ind :val])
         (reagent/cursor cells [cell-ind :selection])
         cell-ind]]
-      (into [] (concat (-> formatted-input
-                           (assoc-in [1 :style :font-size] "1.8em"))
+      (into [] (concat formatted-input
                        (format/get-hiccup
                         (get-in @cells [cell-ind :expression-list])
                         (get-in @cells [cell-ind :selection]))))]]

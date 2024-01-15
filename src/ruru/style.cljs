@@ -2,15 +2,18 @@
 
 (def string-style {:color "red"})
 
+(def cell-font-size "1.5em")
+
 (def cell-output-style
   {:font-family "monospace"
-   :font-size "1.2em"
+   :font-size cell-font-size
    :padding-top "2px"
    :padding-bottom "10px"})
 
 (def cell-input-style
   {:background-color "white"
    :font-family "monospace"
+   :font-size cell-font-size
    :autocomplete "off"
    :autocorrect "off"
    :autocapitalize "off"
