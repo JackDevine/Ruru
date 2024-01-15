@@ -56,8 +56,7 @@
         new-expression-list (try
                               (parser/expression-list (-> cell-val
                                                           (str/replace #"\\ " "‿")
-                                                          (str/replace #"\\" " ")
-                                                          ))
+                                                          (str/replace #"\\" " ")))
                               (catch js/Error e [(str "Unable to parse value\n" cell-val) nil]))]
     (swap! cells #(assoc-in % [cell-id :expression-list] new-expression-list))))
 
@@ -83,7 +82,7 @@
 (defn atom-input [cells cell-order value selection cell-id]
   [:textarea {:type "text"
               :rows (count (str/split-lines @value))
-              :cols 90
+              :cols 50
               :style style/cell-input-style
               :class "ruru-cell"
               :value (str/replace @value #"\\ " "‿")

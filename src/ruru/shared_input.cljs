@@ -25,7 +25,7 @@
 (defn shared-input-field [[value selection]]
   [:textarea {:type "text"
               :rows (count (str/split-lines @value))
-              :cols 90
+              :cols 50
               :class "top"
               :style {:font-size "25px"}
               :value (str/replace @value #"\\ " "‿")
@@ -94,6 +94,6 @@
                      (println "Shared input running cells")
                      (run-cells! cells @cell-order env @env))}
       input-field]
-      :value [:#_string (str "\"" @value "\"")]}))
+     :value [:#_string (str "\"" @value "\"")]}))
 
 (defn shared-input-value [v] (get-in v [:value 'shared-input :value]))
