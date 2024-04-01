@@ -193,7 +193,7 @@
       (base/html? r) [:div {:style {:white-space "normal"
                                     :font-family html-font-family
                                     :width show-width}} (show-html r)]
-      (map? r) [:div {:style {"max-width" show-width}} (show-map r)]
+      (map? r) [:div {:style {:width show-width}} (show-map r)]
       (keyword? r) [:div {:style {:width (if @presentation-mode? "auto" show-width)
                                   :overflow "scroll"}}
                     (apply str (rest (str r)))]
