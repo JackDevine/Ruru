@@ -144,7 +144,7 @@
   {:y y-combinator
    :reverse ruru-reverse
    :html (fn [x] {'html x})
-   :set-diff set-diff
+   :set_diff set-diff
    :extend_dim extend-dim
    :show_array #(assoc % 'show_dims false 'show_border false)
    :t ruru-transpose

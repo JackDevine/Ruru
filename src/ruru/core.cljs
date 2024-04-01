@@ -82,7 +82,7 @@
 (defn atom-input [cells cell-order value selection cell-id]
   [:textarea {:type "text"
               :rows (count (str/split-lines @value))
-              :cols 50
+              :cols 90
               :style style/cell-input-style
               :class "ruru-cell"
               :value (str/replace @value #"\\ " "‿")
@@ -143,15 +143,14 @@
         cols (partition-all (/ (reduce * dims) (second dims)) value)
         nested-array (not (empty? (filter #(or (base/ruru-array? %) (map? %)) value)))
         table (into [] (concat [:table {:style {"table-layout" (if nested-array "auto" "fixed")
-                                                :width (if @presentation-mode? "100%" (str (* 60 (second dims)) "px"))
                                                 :border "0px white"}}]
                                (map #(cols->row-hiccup cols % selection (get arr 'show_border true)) (range (first dims)))))]
     [:div {:style (merge
-                   {:outline (if @presentation-mode? "0px solid black" "2px solid grey")
-                    "max-height" (if @presentation-mode? "" "15em")
+                   {:outline "0px solid black"
+                    "max-height" "15em"
                     "max-width" "80vmax"
-                    "overflow-x" (if @presentation-mode? "visible" "scroll")
-                    "overflow-y" "scroll"
+                    "overflow-x" "visible"
+                    "overflow-y" (if @presentation-mode? "visible" "scroll")
                     "white-space" "nowrap"}
                    style-args)}
      [:span (if (get arr 'show_dims true) (str (apply str (interpose "×" dims)) " array\n") "")]
@@ -160,7 +159,7 @@
 (defn show-map [m & header-names]
   (into
    []
-   (concat [:table {:style {"table-layout" "fixed" :width "100%"}}]
+   (concat [:table]
            [[:tr
              [:th
               {:style {:text-align "left"}}
@@ -169,15 +168,15 @@
               {:style {:text-align "left"}}
               (if header-names (second header-names) "Value")]]
             (for [kv (seq m)] [:tr
-                               [:td [:div {:style {:overflow-x "scroll"}} (show-result (first kv))]]
-                               [:td [:div {:style {:overflow-x "scroll"}} (show-result (second kv))]]])])))
+                               [:td [:div {:style {:overflow-x "scroll"}} (show-result (first kv) "100%")]]
+                               [:td [:div {:style {:overflow-x "scroll"}} (show-result (second kv) "100%")]]])])))
 
 (defn show-html [x]
   (cond (base/ruru-array? (x 'html)) (ruru/extract-string (first (ruru/extract-list [(x 'html)])))
         :else (x 'html)))
 
 (defn show-result [r & show-width]
-  (let [show-width (if (empty? show-width) "580px" show-width)
+  (let [show-width (if (empty? show-width) "1030px" show-width)
         overflow-style (if @presentation-mode? "wrap" "scroll")
         html-font-family (if @presentation-mode? "Arial" "monospace")]
     (cond
@@ -190,9 +189,10 @@
       (base/ruru-array? r) [:div {:style (if @presentation-mode?
                                            {:overflow overflow-style
                                             :width "auto"}
-                                           {"width" show-width
-                                            :overflow overflow-style})} (show-array r)]
-      (base/html? r) [:div {:style {:white-space "normal" :font-family html-font-family}} (show-html r)]
+                                           {:width show-width})} (show-array r)]
+      (base/html? r) [:div {:style {:white-space "normal"
+                                    :font-family html-font-family
+                                    :width show-width}} (show-html r)]
       (map? r) [:div {:style {"max-width" show-width}} (show-map r)]
       (keyword? r) [:div {:style {:width (if @presentation-mode? "auto" show-width)
                                   :overflow "scroll"}}
@@ -201,7 +201,9 @@
                            :overflow "scroll"}} (str r)])))
 
 (defn show-environment [env]
-  (let [ks (clojure.set/difference (set (keys env)) (set (keys ruru/default-environment)))
+  (let [ks (clojure.set/difference (set (keys env)) (clojure.set/union
+                                                     (set (keys ruru/default-environment))
+                                                     (set [:shared_input :input_value])))
         defined-vars (into {} (for [k ks] [k (:value (get env k nil))]))]
     [:div (assoc {:style style/variable-explorer-style} "width" "600px")
      (show-map defined-vars "Variable name" "Value")]))
