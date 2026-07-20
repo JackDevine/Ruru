@@ -49,7 +49,8 @@
 
 (defonce notebook-environment (atom ruru/default-environment))
 
-(defonce loading-done (atom false))
+(defonce notebook-page-loaded (atom false))
+(defonce interpreter-notebook-loaded (atom false))
 
 (defn tokenize-cell! [cells cell-id]
   (let [cell-val (get-in @cells [cell-id :val])
@@ -79,6 +80,8 @@
           (nil? current-number) (first cell-order)
           :else (nth cell-order (dec current-number)))))
 
+(declare update-url!)
+
 (defn atom-input [cells cell-order value selection cell-id]
   [:textarea {:type "text"
               :rows (count (str/split-lines @value))
@@ -102,7 +105,8 @@
                                         .-selectionStart))
                             (tokenize-cell! cells cell-id)
                             (println "Running cells")
-                            (shared-input/run-cells! cells @cell-order notebook-environment @notebook-environment))
+                            (shared-input/run-cells! cells @cell-order notebook-environment @notebook-environment)
+                            (update-url!))
               :on-key-up #(do (reset! selection
                                       (-> %
                                           .-target
@@ -201,55 +205,54 @@
                            :overflow "scroll"}} (str r)])))
 
 (defn show-environment [env]
-  (let [ks (clojure.set/difference (set (keys env)) (clojure.set/union
-                                                     (set (keys ruru/default-environment))
-                                                     (set [:shared_input :input_value])))
-        defined-vars (into {} (for [k ks] [k (:value (get env k nil))]))]
+  (let [default ruru/default-environment
+        excluded #{:shared_input :input_value}
+        defined-vars (into {}
+                          (for [k (keys env)
+                                :when (and (not (excluded k))
+                                           (or (not (contains? default k))
+                                               (not= (get env k) (get default k))))]
+                            [k (:value (get env k nil))]))]
     [:div (assoc {:style style/variable-explorer-style} "width" "600px")
      (show-map defined-vars "Variable name" "Value")]))
 
-(defonce current-notebook (atom "__interpreter_demo_notebook__.ruru"))
+;; --- Notebook state is encoded in the URL hash fragment, not localStorage ---
 
-(defonce display-create-new-notebook (atom "none"))
+(defn current-notebook-map []
+  {:cell-order @cell-order
+   :cells (into {} (for [[id cell] @cells]
+                     [id (select-keys cell [:val :show-code])]))})
 
-(defn set-notebook-into-storage [name notebook-content]
-  (.setItem (.-localStorage js/window) name
-            notebook-content))
+(defn notebook->url-fragment [nb-map]
+  (js/encodeURIComponent (pr-str nb-map)))
+
+(defn url-fragment->notebook []
+  (try
+    (let [hash (.-hash (.-location js/window))
+          bare (if (str/starts-with? hash "#") (subs hash 1) hash)
+          idx (str/index-of bare "?")
+          query (if idx (subs bare (inc idx)) "")
+          params (js/URLSearchParams. query)
+          n (.get params "n")]
+      (when (and n (not= n ""))
+        (edn/read-string n)))
+    (catch js/Error e
+      (println (str "Could not parse notebook from URL: " (.-message e)))
+      nil)))
+
+(defn update-url! []
+  (let [nb (current-notebook-map)
+        frag (notebook->url-fragment nb)]
+    (.replaceState js/history nil "" (str "#/notebook?n=" frag))))
+
+(defn clear-url! []
+  (.replaceState js/history nil "" "#/notebook"))
 
 (defn hide-all-code [cells-vec]
   (into {} (map #(assoc-in % [1 :show-code] false) cells-vec)))
 
 (defn show-all-code [cells-vec]
   (into {} (map #(assoc-in % [1 :show-code] true) cells-vec)))
-
-(defn get-saved-notebooks []
-  (let [n (.-length (.-localStorage js/window))]
-    (if (= 0 n)
-      (do (set-notebook-into-storage "untitled.ruru"
-                                     (let [id (random-uuid)]
-                                       {:cell-order [id] :cells {id {:val "" :show-code true}}}))
-          (get-saved-notebooks))
-      (into [] (for [i (range n)]
-                 (.key (.-localStorage js/window) i))))))
-
-(defn available-name [notebook-name]
-  (let [[name extension] (str/split notebook-name #"\.")
-        saved-notebooks (get-saved-notebooks)]
-    (cond
-      (= notebook-name "") (available-name "untitled.ruru")
-      (contains? saved-notebooks notebook-name) (str (str name "_edit.") extension)
-      :else notebook-name)))
-
-(defn save-notebook-impl! [name notebook-content]
-  (let [saved-notebooks (get-saved-notebooks)]
-    (cond (= "" name) (do (reset! current-notebook "untitled.ruru")
-                          (save-notebook-impl! "untitled.ruru" notebook-content))
-          (and
-           (not= name @current-notebook)
-           (contains? (set saved-notebooks) name)) (let
-                                                    [new-name (available-name name)]
-                                                     (save-notebook-impl! new-name notebook-content))
-          :else (set-notebook-into-storage name notebook-content))))
 
 (defn select-first-cell! []
   (let [id (first @cell-order)]
@@ -268,56 +271,48 @@
       (.item n)
       .focus))
 
-(defn save-notebook!
-  ([name]
-   (save-notebook-impl! name (pr-str {:cell-order @cell-order
-                                      :cells (into {} (for [[id cell] @cells]
-                                                        [id (select-keys cell [:val :show-code])]))})))
-  ([name notebook-content] (save-notebook-impl! name notebook-content)))
-
 (defn load-cell [c]
   {:show-code (:show-code c)
    :val (:val c)
    :selection nil :result nil
    :expression-list (parser/expression-list (:val c))})
 
-(defn load-notebook [name & notebook-data]
-  (let [notebook-data (if (empty? notebook-data)
-                        (edn/read-string (.getItem (.-localStorage js/window) name))
-                        (first notebook-data))
-        cell-order-data (:cell-order notebook-data)
-        cell-data (:cells notebook-data)]
-    (if (= (mapv :val (vals cell-data)) (mapv :val (vals @cells)))
-      (println (str name " already loaded"))
-      (do
-        (println (str "Loading " name))
-        (reset! notebook-environment ruru/default-environment)
-        (swap! notebook-environment
-               assoc :shared_input {:role :function
-                                    :value #(shared-input/shared-input %1
-                                                                       %2
-                                                                       notebook-environment
-                                                                       cells
-                                                                       cell-order)})
-        (swap! notebook-environment
-               assoc :input_value {:role :function
-                                   :value shared-input/shared-input-value})
-        (reset! cell-order cell-order-data)
-        (reset! cells (into {} (for [[id c] cell-data] [id (load-cell c)])))
-        (shared-input/run-cells! cells @cell-order notebook-environment @notebook-environment)
-        (select-first-cell!)))))
+(defn wire-shared-input! []
+  (swap! notebook-environment
+         assoc :shared_input {:role :function
+                              :value #(shared-input/shared-input %1
+                                                                 %2
+                                                                 notebook-environment
+                                                                 cells
+                                                                 cell-order)})
+  (swap! notebook-environment
+         assoc :input_value {:role :function
+                            :value shared-input/shared-input-value}))
 
-(defn list-saved-notebooks [saved-notebooks]
-  [:div
-   (into []
-         (concat
-          [:ul]
-          (for [n saved-notebooks]
-            [:li
-             [:div [:span {:on-click #(load-notebook n)} n]
-              [:span "  "]
-              [:button {:on-click #(do
-                                     (.removeItem (.-localStorage js/window) n))} "X"]]])))])
+(defn load-notebook-from-edn [notebook-data]
+  (let [cell-order-data (:cell-order notebook-data)
+        cell-data (:cells notebook-data)]
+    (println "Loading notebook from data")
+    (reset! notebook-environment ruru/default-environment)
+    (wire-shared-input!)
+    (reset! cell-order cell-order-data)
+    (reset! cells (into {} (for [[id c] cell-data] [id (load-cell c)])))
+    (shared-input/run-cells! cells @cell-order notebook-environment @notebook-environment)
+    (select-first-cell!)))
+
+(defn load-notebook-from-url []
+  (when-let [nb (url-fragment->notebook)]
+    (load-notebook-from-edn nb)
+    nb))
+
+(defn fresh-notebook! []
+  (let [id (random-uuid)]
+    (reset! cell-order [id])
+    (reset! cells {id (new-cell-data)})
+    (reset! notebook-environment ruru/default-environment)
+    (wire-shared-input!)
+    (clear-url!)
+    (select-first-cell!)))
 
 (defn add-cell-below! [cell-id]
   (let [indexed-cell-order (map-indexed vector @cell-order)
@@ -327,15 +322,11 @@
         new-cell (new-cell-data)
         [before after] (split-at (inc cell-number) @cell-order)
         new-cell-order (into [] (concat before [new-uuid] after))]
-    (do (save-notebook!
-         @current-notebook
-         (pr-str {:cell-order new-cell-order
-                  :cells (assoc (into {} (map
-                                          (fn [c] {(first c)
-                                                   (select-keys (second c) [:val :show-code])})
-                                          @cells)) new-uuid new-cell)}))
-        (load-notebook @current-notebook)
-        (select-cell! (inc cell-number)))))
+    (swap! cells assoc new-uuid new-cell)
+    (reset! cell-order new-cell-order)
+    (shared-input/run-cells! cells @cell-order notebook-environment @notebook-environment)
+    (update-url!)
+    (select-cell! (inc cell-number))))
 
 (defn delete-cell! [cell-id]
   (let [indexed-cell-order (map-indexed vector @cell-order)
@@ -343,16 +334,17 @@
         [cell-number _] (first matching-cells)
         new-cell-order (into [] (remove #{cell-id} @cell-order))
         new-cells (dissoc @cells cell-id)]
-    (do (save-notebook!
-         @current-notebook
-         (pr-str {:cell-order new-cell-order :cells new-cells}))
-        (load-notebook @current-notebook)
-        (select-cell! cell-number))))
+    (when (seq new-cell-order)
+      (reset! cells new-cells)
+      (reset! cell-order new-cell-order)
+      (shared-input/run-cells! cells @cell-order notebook-environment @notebook-environment)
+      (update-url!)
+      (select-cell! (min cell-number (dec (count new-cell-order)))))))
 
 (defn create-cell [val selection cell-id]
   [:div {:class "flex-container"}
    [:img {:on-click #(do (swap! cells (fn [x] (update-in x [cell-id :show-code] not)))
-                         (save-notebook! @current-notebook))
+                         (update-url!))
           :src (if (get-in @cells [cell-id :show-code] false) "assets/favicon.svg" "assets/eye_crossed.svg")
           :style {:width "40px" :height "20px"}}]
    [:div
@@ -391,66 +383,23 @@
     [:div {:style style/cell-output-style}
      (show-result (get-in @cells [cell-id :result]) "60vmax")]]])
 
-(defn create-new-notebook-dialog []
-  [:span [:button
-          {:on-click (fn [] (do (swap! display-create-new-notebook
-                                       (fn [x] (if (= x "none") "block" "none")))))}
-          "Create new notebook"]
-   [:span {:style {:display @display-create-new-notebook}}
-    [:input {:id "new-notebook-name" :type "text"}]
-    [:button {:on-click (fn [] (let [new-notebook-name (-> js/document
-                                                           (.getElementById "new-notebook-name")
-                                                           .-value)]
-                                 (do (save-notebook! @current-notebook)
-                                     (save-notebook! new-notebook-name (let [id (random-uuid)]
-                                                                         (pr-str
-                                                                          {:cell-order [id]
-                                                                           :cells {id {:val "" :show-code true}}})))
-                                     (load-notebook new-notebook-name)
-                                     (reset! current-notebook new-notebook-name)
-                                     (swap! display-create-new-notebook
-                                            (fn [x] (if (= x "none") "block" "none")))
-                                     (select-first-cell!))))}
-     "Save new notebook"]]])
-
-(defn manage-notebooks-page []
-  (fn [] [:span.main
-          [:title "Manage notebooks"]
-          (create-new-notebook-dialog)
-          [:div (list-saved-notebooks (get-saved-notebooks))]]))
-
 (defn render-interactive-mode []
   [:div [:div
          [:img {:src "assets/ruru_icon.png" :style {:width "192px" :height "108px" :margin-left "-45px"}}]
          [:div {:style {:margin-top "-100px" :margin-left "150px" :margin-bottom "50px"}}
-          (into [] (concat [:select {:value @current-notebook
-                                     :on-change #(do
-                                                   (println (str "Current notebook " @current-notebook))
-                                                   (println (str "Selecting " (-> % .-target .-value)))
-                                                   (save-notebook! @current-notebook)
-                                                   (reset! current-notebook (-> % .-target .-value))
-                                                   (load-notebook @current-notebook)
-                                                   (println (str "Current notebook " @current-notebook))
-                                                   (select-first-cell!))}]
-                           (for [name (get-saved-notebooks)] [:option name])))
-          [:button
-           {:on-click #(do (save-notebook! @current-notebook))}
-           "Save notebook"]
+          [:button {:on-click #(fresh-notebook!)} "New notebook"]
           [:button {:on-click #(do (reset! presentation-mode? true)
                                    (reset! presented-cell (first @cell-order)))}
-           "Presentation mode"]
-          [:a {:href (rfe/href ::manage_notebooks)} "Manage saved notebooks"]]
-         [:div {:style {:margin-top "-40px" :margin-left "150px" :margin-bottom "50px"}}
-          (create-new-notebook-dialog)]]
+           "Presentation mode"]]]
    [:br]
    [:button {:on-click #(do (swap! cells show-all-code)
                             (reset! all-code-showing true)
-                            (save-notebook! @current-notebook))
+                            (update-url!))
              :style {:border-color (if @all-code-showing "orange" "black")}}
     "Show all cells"]
    [:button {:on-click #(do (swap! cells hide-all-code)
                             (reset! all-code-showing false)
-                            (save-notebook! @current-notebook))
+                            (update-url!))
              :style {:border-color (if (not @all-code-showing) "orange" "black")}}
     "Hide all cells"]
    [:br]
@@ -460,7 +409,8 @@
                                     (reagent/cursor cells [% :val])
                                     (reagent/cursor cells [% :selection]) %)
                                   @cell-order)))
-    [:button {:on-click #(reset! notebook-environment ruru/default-environment)} "Reset notebook"]
+    [:button {:on-click #(do (reset! notebook-environment ruru/default-environment)
+                             (wire-shared-input!))} "Reset notebook"]
     [:div {:style {:position "absolute" :top 0 :right 0}} (show-environment @notebook-environment)]]])
 
 (defn render-presentation-mode [cells presented-cell current-notebook]
@@ -472,33 +422,31 @@
                    (reagent/cursor cells [@presented-cell :selection]) @presented-cell))])
 
 (defn notebook-page []
-  (fn [] [:span.main
-          {:on-load #(let [saved-notebooks (get-saved-notebooks)]
-                       (if @loading-done
-                         nil
-                         (do (println "Loading...")
-                             (load-notebook (first saved-notebooks))
-                             (reset! current-notebook (first saved-notebooks))
-                             (swap! loading-done not)
-                             (select-first-cell!)
-                             (.addEventListener
-                              js/window
-                              "keydown"
-                              (fn [e]
-                                (cond
-                                  (and (.-ctrlKey e) (= "s" (.-key e))) (do
-                                                                          (.preventDefault e)
-                                                                          (try
-                                                                            (save-notebook! @current-notebook)
-                                                                            (catch js/Error e (println "Save failed" e))))
-                                  (= "Escape" (.-key e)) (reset! presentation-mode? false)
-                                  (and (.-ctrlKey e) (= "ArrowRight" (.-key e))) (swap! presented-cell inc-presented-cell)
-                                  (and (.-ctrlKey e) (= "ArrowLeft" (.-key e))) (swap! presented-cell dec-presented-cell)
-                                  :else nil))))))}
-          [:title @current-notebook]
-          (if @presentation-mode?
-            (render-presentation-mode cells presented-cell @current-notebook)
-            (render-interactive-mode))]))
+  (reagent/create-class
+   {:component-did-mount
+    (fn [_]
+      (when-not @notebook-page-loaded
+        (reset! notebook-page-loaded true)
+        (println "Loading...")
+        (let [loaded (load-notebook-from-url)]
+          (when-not loaded
+            (fresh-notebook!)))
+        (.addEventListener
+         js/window
+         "keydown"
+         (fn [e]
+           (cond
+             (= "Escape" (.-key e)) (reset! presentation-mode? false)
+             (and (.-ctrlKey e) (= "ArrowRight" (.-key e))) (swap! presented-cell inc-presented-cell)
+             (and (.-ctrlKey e) (= "ArrowLeft" (.-key e))) (swap! presented-cell dec-presented-cell)
+             :else nil)))))
+    :reagent-render
+    (fn []
+      [:span.main
+       [:title "ruru notebook"]
+       (if @presentation-mode?
+         (render-presentation-mode cells presented-cell "ruru notebook")
+         (render-interactive-mode))])}))
 
 (defonce spreadsheet-selection (atom {'array_dims [2 1] 'value [1 1]}))
 
@@ -719,25 +667,25 @@
       [:h3 [:a {:href (rfe/href ::interpreter-notebook)} "Interactive notebook showing how the Ruru interpreter works"]]]]))
 
 (defn interpreter-notebook-page []
-  (fn [] [:span.main
-          {:on-load #((if @loading-done
-                        nil
-                        (do (println "Loading...")
-                            (reset! current-notebook "__interpreter_demo_notebook__.ruru")
-                            (save-notebook! "__interpreter_demo_notebook__.ruru"
-                                            (pr-str interpreter/interpreter-edn))
-                            (load-notebook "__interpreter_demo_notebook__.ruru")
-                            (reset! current-notebook "__interpreter_demo_notebook__.ruru")
-                            (swap! loading-done not)
-                            (reset! presented-cell (first @cell-order))
-                            (reset! presentation-mode? true)
-                            (.addEventListener
-                             js/window
-                             "keydown"
-                             (fn [e]
-                               (cond
-                                 (= "Escape" (.-key e)) (reset! presentation-mode? false)
-                                 :else nil))))))}
+  (reagent/create-class
+   {:component-did-mount
+    (fn [_]
+      (when-not @interpreter-notebook-loaded
+        (reset! interpreter-notebook-loaded true)
+        (println "Loading interpreter demo...")
+        (load-notebook-from-edn interpreter/interpreter-edn)
+        (reset! presented-cell (first @cell-order))
+        (reset! presentation-mode? true)
+        (.addEventListener
+         js/window
+         "keydown"
+         (fn [e]
+           (cond
+             (= "Escape" (.-key e)) (reset! presentation-mode? false)
+             :else nil)))))
+    :reagent-render
+    (fn []
+      [:span.main
           [:title "Interpreter demo"]
           [:div {:align "right"}
            [:button {:on-click #(do (println "Previous")
@@ -747,8 +695,8 @@
                                     (swap! presented-cell
                                            (fn [c] (inc-presented-cell c @cell-order @cells))))} "Next"]]
           (if @presentation-mode?
-            (render-presentation-mode cells presented-cell @current-notebook)
-            (render-interactive-mode))]))
+            (render-presentation-mode cells presented-cell "ruru notebook")
+            (render-interactive-mode))])}))
 
 (defn get-app-element []
   (gdom/getElement "app"))
@@ -789,10 +737,7 @@
      :view interpreter-page}]
    ["/interpreter-notebook"
     {:name ::interpreter-notebook
-     :view interpreter-notebook-page}]
-   ["/manage_notebooks"
-    {:name ::manage_notebooks
-     :view manage-notebooks-page}]])
+     :view interpreter-notebook-page}]])
 
 (defn init! []
   (rfe/start!
